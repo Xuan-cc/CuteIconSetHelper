@@ -131,8 +131,8 @@ class LayoutEngine:
         
         # 排列图片
         for i, img in enumerate(images):
-            # 计算角度（从顶部开始，顺时针）
-            angle = -90 + i * angle_step  # -90度使第一张在顶部
+            # 计算角度（从0度开始，顺时针）
+            angle = i * angle_step  # 0度使第一张在右侧（3点钟方向）
             
             # 计算位置
             rad = math.radians(angle)

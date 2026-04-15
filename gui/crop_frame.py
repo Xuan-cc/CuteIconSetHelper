@@ -114,12 +114,6 @@ class CropFrame(ttk.Frame):
         
         ttk.Button(
             btn_frame,
-            text="返回第一步",
-            command=self._go_to_input
-        ).pack(fill=tk.X, padx=5, pady=2)
-        
-        ttk.Button(
-            btn_frame,
             text="跳过此图",
             command=self._skip_current
         ).pack(fill=tk.X, padx=5, pady=2)
@@ -389,13 +383,6 @@ class CropFrame(ttk.Frame):
     def _auto_crop(self):
         """自动居中裁剪"""
         self._init_crop_rect()
-    
-    def _go_to_input(self):
-        """返回第一步"""
-        # 保存当前进度
-        self.app.image_data = self.images
-        self.app.cropped_images = self.cropped_images
-        self.app.show_input_frame()
     
     def _skip_current(self):
         """跳过当前图片"""
