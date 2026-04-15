@@ -14,11 +14,12 @@ from gui.generate_frame import GenerateFrame
 class ImageComposerApp:
     """图片组合工具主应用"""
     
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: tk.Tk, dnd_available: bool = True):
         self.root = root
         self.root.title("图片组合工具")
         self.root.geometry("900x700")
         self.root.minsize(800, 600)
+        self.dnd_available = dnd_available
         
         # 存储当前处理的图片数据
         self.image_data: tp.List[tp.Dict] = []  # [{"path": str, "image": PIL.Image, "cropped": bool}]
@@ -63,7 +64,7 @@ class ImageComposerApp:
     
     def _init_frames(self):
         """初始化所有界面"""
-        self.input_frame = InputFrame(self.content_frame, self)
+        self.input_frame = InputFrame(self.content_frame, self, dnd_available=self.dnd_available)
         self.crop_frame = CropFrame(self.content_frame, self)
         self.generate_frame = GenerateFrame(self.content_frame, self)
         

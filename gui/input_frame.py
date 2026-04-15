@@ -13,9 +13,10 @@ import os
 class InputFrame(ttk.Frame):
     """图片输入界面"""
     
-    def __init__(self, parent: ttk.Frame, app):
+    def __init__(self, parent: ttk.Frame, app, dnd_available: bool = True):
         super().__init__(parent)
         self.app = app
+        self.dnd_available = dnd_available
         self.image_paths: tp.List[str] = []
         self.images: tp.List[tp.Dict] = []
         
@@ -108,6 +109,13 @@ class InputFrame(ttk.Frame):
     
     def _setup_drag_drop(self):
         """设置拖拽支持 - 使用更安全的方式"""
+        if not self.dnd_available:
+            self.drag_hint_label.configure(
+                text="请使用'选择图片'按钮导入文件",
+                foreground="gray"
+            )
+            return
+        
         system = platform.system()
         
         if system == "Windows":
