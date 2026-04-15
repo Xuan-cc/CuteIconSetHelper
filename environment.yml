@@ -1,0 +1,11 @@
+name: image_composer
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pillow
+  - numpy
+  - pip:
+    - pyinstaller  # 用于打包
