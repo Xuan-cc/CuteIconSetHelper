@@ -3,6 +3,12 @@
 一个支持拖拽、裁剪、多种排布方式的图片处理工具，专为制作图标组合而生。
 
 [![GitHub](https://img.shields.io/badge/GitHub-CuteIconSetHelper-blue)](https://github.com/Xuan-cc/CuteIconSetHelper)
+[![VibeCoding](https://img.shields.io/badge/Built%20with-VibeCoding-orange)](https://en.wikipedia.org/wiki/Vibe_coding)
+[![AI Assisted](https://img.shields.io/badge/AI%20Assisted-Claude%20%7C%20Sisyphus-purple)]()
+
+> 🤖 **AI 生成提示**: 本项目完全使用 AI（Claude + Sisyphus Agent）通过 VibeCoding 方式开发
+> 
+> 💡 **VibeCoding 提示**: 如果你也想用 AI 开发类似项目，可以尝试描述你的需求给 AI，让它帮你实现功能
 
 ## ✨ 功能特性
 
