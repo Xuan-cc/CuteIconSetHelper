@@ -106,6 +106,12 @@ class ImageComposerApp:
         self.input_frame.pack(fill=tk.BOTH, expand=True)
         self._update_step_indicator(1)
     
+    def go_back_to_crop(self):
+        """从第三步返回到第二步"""
+        self._hide_all_frames()
+        self.crop_frame.pack(fill=tk.BOTH, expand=True)
+        self._update_step_indicator(2)
+    
     def show_crop_frame(self, images: tp.List[tp.Dict]):
         """显示裁剪界面"""
         self.image_data = images

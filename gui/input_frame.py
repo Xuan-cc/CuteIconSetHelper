@@ -309,7 +309,7 @@ class InputFrame(ttk.Frame):
                 "width": width,
                 "height": height,
                 "is_square": width == height,
-                "cropped": width == height
+                "cropped": False
             }
             
             self.images.append(image_info)
@@ -317,8 +317,6 @@ class InputFrame(ttk.Frame):
             
             # 更新列表显示
             display_text = f"{Path(file_path).name} ({width}x{height})"
-            if width != height:
-                display_text += " [需要裁剪]"
             self.listbox.insert(tk.END, display_text)
             
         except Exception as e:

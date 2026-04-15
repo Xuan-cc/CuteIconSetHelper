@@ -105,10 +105,14 @@ class CropFrame(ttk.Frame):
         self.info_ratio = ttk.Label(info_frame, text="比例: -")
         self.info_ratio.pack(anchor=tk.W, padx=5, pady=1)
         
+        # 状态提示
+        self.status_label = ttk.Label(control_frame, text="就绪", foreground="gray", font=("Microsoft YaHei", 9))
+        self.status_label.pack(pady=5)
+
         # 裁剪控制
         crop_control = ttk.LabelFrame(control_frame, text="裁剪控制")
         crop_control.pack(fill=tk.X, pady=5, padx=5)
-        
+
         ttk.Label(
             crop_control,
             text="拖动裁剪框可移动\n框外拖动可重绘",
@@ -116,64 +120,83 @@ class CropFrame(ttk.Frame):
             justify=tk.CENTER,
             font=("Microsoft YaHei", 9)
         ).pack(pady=2)
-        
+
         # 裁剪形状选择 - 添加trace监听变化
         self.crop_shape_var = tk.StringVar(value="square")
         self.crop_shape_var.trace_add('write', self._on_shape_changed)
         shape_frame = ttk.Frame(crop_control)
         shape_frame.pack(fill=tk.X, padx=5, pady=3)
         ttk.Label(shape_frame, text="裁剪形状:").pack(side=tk.LEFT)
-        ttk.Radiobutton(shape_frame, text="方形", variable=self.crop_shape_var, 
+        ttk.Radiobutton(shape_frame, text="方形", variable=self.crop_shape_var,
                        value="square").pack(side=tk.LEFT, padx=2)
-        ttk.Radiobutton(shape_frame, text="圆形", variable=self.crop_shape_var, 
+        ttk.Radiobutton(shape_frame, text="圆形", variable=self.crop_shape_var,
                        value="circle").pack(side=tk.LEFT, padx=2)
-        
+
         ttk.Button(
             crop_control,
             text="重置裁剪框",
             command=self._reset_crop
         ).pack(fill=tk.X, padx=5, pady=2)
-        
+
         ttk.Button(
             crop_control,
             text="自动居中裁剪",
             command=self._auto_crop
         ).pack(fill=tk.X, padx=5, pady=2)
+
+        # 保存裁切按钮 - 移到裁剪控制栏
+        ttk.Button(
+            crop_control,
+            text="✓ 保存裁切到素材库",
+            command=self._save_crop_to_library
+        ).pack(fill=tk.X, padx=5, pady=2)
         
         # 实时预览窗口
         preview_frame = ttk.LabelFrame(control_frame, text="裁剪预览")
         preview_frame.pack(fill=tk.X, pady=5, padx=5)
-        
+
         self.preview_canvas = tk.Canvas(preview_frame, width=150, height=150, bg="#2b2b2b")
         self.preview_canvas.pack(pady=3)
-        
-        # 操作按钮
-        btn_frame = ttk.Frame(control_frame)
-        btn_frame.pack(fill=tk.X, pady=5, padx=5)
-        
+
+        # 底部导航按钮 - 始终可见
+        nav_frame = ttk.LabelFrame(control_frame, text="图片导航")
+        nav_frame.pack(fill=tk.X, pady=5, padx=5)
+
+        nav_btn_frame = ttk.Frame(nav_frame)
+        nav_btn_frame.pack(fill=tk.X, padx=5, pady=3)
+
+        self.prev_btn = ttk.Button(
+            nav_btn_frame,
+            text="← 上一张",
+            command=self._go_to_prev_image
+        )
+        self.prev_btn.pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+
+        self.next_btn = ttk.Button(
+            nav_btn_frame,
+            text="下一张 →",
+            command=self._go_to_next_image
+        )
+        self.next_btn.pack(side=tk.RIGHT, padx=2, fill=tk.X, expand=True)
+
+        # 流程导航按钮 - 固定放在底部
+        nav_control_frame = ttk.LabelFrame(control_frame, text="流程导航")
+        nav_control_frame.pack(fill=tk.X, pady=5, padx=5)
+
+        nav_control_btn_frame = ttk.Frame(nav_control_frame)
+        nav_control_btn_frame.pack(fill=tk.X, padx=5, pady=3)
+
         ttk.Button(
-            btn_frame,
-            text="跳过此图",
-            command=self._skip_current
-        ).pack(fill=tk.X, pady=2)
-        
+            nav_control_btn_frame,
+            text="← 返回上一步",
+            command=self._go_back
+        ).pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+
         ttk.Button(
-            btn_frame,
-            text="应用裁剪",
-            command=self._apply_crop
-        ).pack(fill=tk.X, pady=2)
-        
-        ttk.Button(
-            btn_frame,
-            text="应用并再裁一张",
-            command=self._apply_and_crop_another
-        ).pack(fill=tk.X, pady=2)
-        
-        ttk.Button(
-            btn_frame,
-            text="下一步",
+            nav_control_btn_frame,
+            text="下一步 →",
             command=self._finish
-        ).pack(fill=tk.X, pady=2)
+        ).pack(side=tk.RIGHT, padx=5)
         
         # 绑定鼠标事件
         self.canvas.bind("<Button-1>", self._on_mouse_down)
@@ -188,30 +211,66 @@ class CropFrame(ttk.Frame):
     def set_images(self, images: tp.List[tp.Dict]):
         """设置要处理的图片"""
         self.images = images
-        # 保留已裁剪的图片（如果重新进入）
-        if not self.cropped_images:
-            self.cropped_images = []
-        self.current_index = len(self.cropped_images)  # 从上次位置继续
-        
-        # 找到下一个需要裁剪的图片
-        self._find_next_non_square()
+        # 重置素材库（新会话）
+        self.cropped_images = []
+        # 清除裁剪框状态缓存
+        if hasattr(self, '_crop_states'):
+            self._crop_states.clear()
+
+        self.current_index = 0
         self._load_current_image()
     
-    def _find_next_non_square(self):
-        """找到下一个非1:1的图片"""
-        while self.current_index < len(self.images):
-            img = self.images[self.current_index]
-            if not img.get("is_square", False):
-                return
-            # 已经是1:1的，直接加入裁剪完成列表
-            if self.current_index >= len(self.cropped_images):
-                self.cropped_images.append(img)
-            self.current_index += 1
+    def _go_to_image(self, index: int):
+        """切换到指定索引的图片"""
+        if index < 0 or index >= len(self.images):
+            return
+        
+        # 保存当前图片的裁剪框状态
+        if self.current_index < len(self.images):
+            self._save_crop_state()
+        
+        self.current_index = index
+        self._load_current_image()
+    
+    def _go_to_prev_image(self):
+        """切换到上一张图"""
+        if self.current_index > 0:
+            self._go_to_image(self.current_index - 1)
+    
+    def _go_to_next_image(self):
+        """切换到下一张图"""
+        if self.current_index < len(self.images) - 1:
+            self._go_to_image(self.current_index + 1)
+    
+    def _save_crop_state(self):
+        """保存当前裁剪框状态"""
+        if not hasattr(self, '_crop_states'):
+            self._crop_states = {}
+        
+        # 保存当前裁剪框的位置和形状
+        self._crop_states[self.current_index] = {
+            'crop_x1': self.crop_x1,
+            'crop_y1': self.crop_y1,
+            'crop_x2': self.crop_x2,
+            'crop_y2': self.crop_y2,
+            'crop_shape': self.crop_shape_var.get()
+        }
+    
+    def _restore_crop_state(self):
+        """恢复裁剪框状态"""
+        if hasattr(self, '_crop_states') and self.current_index in self._crop_states:
+            state = self._crop_states[self.current_index]
+            self.crop_x1 = state['crop_x1']
+            self.crop_y1 = state['crop_y1']
+            self.crop_x2 = state['crop_x2']
+            self.crop_y2 = state['crop_y2']
+            self.crop_shape_var.set(state['crop_shape'])
+            return True
+        return False
     
     def _load_current_image(self):
         """加载当前图片"""
         if self.current_index >= len(self.images):
-            self._finish()
             return
         
         img_data = self.images[self.current_index]
@@ -227,8 +286,11 @@ class CropFrame(ttk.Frame):
             text=f"处理第 {self.current_index + 1} / {len(self.images)} 张图片"
         )
         
-        # 在画布上显示图片（包括初始化裁剪框）
+        # 在画布上显示图片
         self._display_image()
+        
+        # 更新导航按钮状态
+        self._update_nav_buttons()
     
     def _display_image(self):
         """在画布上显示图片"""
@@ -277,8 +339,10 @@ class CropFrame(ttk.Frame):
         self.img_display_width = new_width
         self.img_display_height = new_height
         
-        # 图片显示完成后，初始化裁剪框
-        self._init_crop_rect()
+        # 尝试恢复裁剪框状态，如果没有则初始化
+        if not self._restore_crop_state():
+            # 图片显示完成后，初始化裁剪框
+            self._init_crop_rect()
     
     def _init_crop_rect(self):
         """初始化裁剪框"""
@@ -518,113 +582,77 @@ class CropFrame(ttk.Frame):
         """自动居中裁剪"""
         self._init_crop_rect()
     
-    def _skip_current(self):
-        """跳过当前图片"""
-        # 使用原图
-        img_data = self.images[self.current_index]
-        if self.current_index >= len(self.cropped_images):
-            self.cropped_images.append(img_data)
-        else:
-            self.cropped_images[self.current_index] = img_data
-        
-        self.current_index += 1
-        self._find_next_non_square()
-        self._load_current_image()
-    
-    def _apply_crop(self):
-        """应用裁剪"""
+    def _save_crop_to_library(self):
+        """保存当前裁切到素材库（可多次裁切同一张图）"""
         if not self.crop_rect:
             return
-        
+
         # 计算裁剪区域（转换到原始图片坐标）
         x1 = (min(self.crop_x1, self.crop_x2) - self.img_offset_x) / self.display_scale
         y1 = (min(self.crop_y1, self.crop_y2) - self.img_offset_y) / self.display_scale
         x2 = (max(self.crop_x1, self.crop_x2) - self.img_offset_x) / self.display_scale
         y2 = (max(self.crop_y1, self.crop_y2) - self.img_offset_y) / self.display_scale
-        
+
         # 转换为整数坐标
         x1, y1 = int(x1), int(y1)
         x2, y2 = int(x2), int(y2)
-        
+
         # 确保正方形
         size = min(x2 - x1, y2 - y1)
         x2, y2 = x1 + size, y1 + size
-        
+
         # 裁剪图片
         cropped = self.original_image.crop((x1, y1, x2, y2))
-        
+
         # 如果是圆形裁剪，应用圆形遮罩
         if self.crop_shape_var.get() == "circle":
             cropped = self._apply_circle_mask(cropped)
-        
-        # 更新图片数据
+
+        # 创建新的素材项
         img_data = self.images[self.current_index].copy()
         img_data["image"] = cropped
         img_data["width"] = size
         img_data["height"] = size
         img_data["is_square"] = True
         img_data["cropped"] = True
-        
-        if self.current_index >= len(self.cropped_images):
-            self.cropped_images.append(img_data)
-        else:
-            self.cropped_images[self.current_index] = img_data
-        
-        self.current_index += 1
-        self._find_next_non_square()
-        self._load_current_image()
+        img_data["crop_index"] = len(self.cropped_images)  # 记录裁切序号
+
+        # 添加到素材库（不是替换，是追加）
+        self.cropped_images.append(img_data)
+
+        # 显示状态提示（非弹窗）
+        self._show_status(f"✓ 已保存裁切 #{len(self.cropped_images)}")
+
+    def _show_status(self, message: str, duration: int = 2000):
+        """显示状态提示（自动消失）"""
+        self.status_label.configure(text=message, foreground="green")
+        self.after(duration, lambda: self.status_label.configure(text="就绪", foreground="gray"))
     
-    def _apply_and_crop_another(self):
-        """应用本次裁剪并再裁一张（从同一张原图再裁剪一个区域）"""
-        if not self.crop_rect:
-            return
-        
-        # 计算裁剪区域（转换到原始图片坐标）
-        x1 = (min(self.crop_x1, self.crop_x2) - self.img_offset_x) / self.display_scale
-        y1 = (min(self.crop_y1, self.crop_y2) - self.img_offset_y) / self.display_scale
-        x2 = (max(self.crop_x1, self.crop_x2) - self.img_offset_x) / self.display_scale
-        y2 = (max(self.crop_y1, self.crop_y2) - self.img_offset_y) / self.display_scale
-        
-        # 转换为整数坐标
-        x1, y1 = int(x1), int(y1)
-        x2, y2 = int(x2), int(y2)
-        
-        # 确保正方形
-        size = min(x2 - x1, y2 - y1)
-        x2, y2 = x1 + size, y1 + size
-        
-        # 裁剪图片
-        cropped = self.original_image.crop((x1, y1, x2, y2))
-        
-        # 如果是圆形裁剪，应用圆形遮罩
-        if self.crop_shape_var.get() == "circle":
-            cropped = self._apply_circle_mask(cropped)
-        
-        # 创建新的图片数据（基于当前原图）
-        img_data = self.images[self.current_index].copy()
-        img_data["image"] = cropped
-        img_data["width"] = size
-        img_data["height"] = size
-        img_data["is_square"] = True
-        img_data["cropped"] = True
-        
-        # 添加到裁剪列表
-        if self.current_index >= len(self.cropped_images):
-            self.cropped_images.append(img_data)
-        else:
-            self.cropped_images[self.current_index] = img_data
-        
-        # 在当前位置插入一个新的待处理项（使用同一张原图）
-        new_img_data = self.images[self.current_index].copy()
-        self.images.insert(self.current_index + 1, new_img_data)
-        
-        self.current_index += 1
-        self._load_current_image()
+    def _update_nav_buttons(self):
+        """更新导航按钮状态"""
+        if hasattr(self, 'prev_btn'):
+            self.prev_btn.configure(state=tk.NORMAL if self.current_index > 0 else tk.DISABLED)
+        if hasattr(self, 'next_btn'):
+            self.next_btn.configure(state=tk.NORMAL if self.current_index < len(self.images) - 1 else tk.DISABLED)
+    
+    def _go_back(self):
+        """返回上一步（第一步）"""
+        self.app.show_input_frame()
     
     def _finish(self):
         """完成裁剪，进入生成界面"""
-        if not self.cropped_images:
-            messagebox.showwarning("提示", "没有可处理的图片")
-            return
-        
+        # 检查是否有已保存的裁切
+        if len(self.cropped_images) == 0:
+            # 没有裁切，询问是否使用所有原图
+            if not messagebox.askyesno(
+                "确认",
+                "还没有保存任何裁切，\n"
+                "是否将所有图片作为素材进入下一步？"
+            ):
+                return
+
+            # 将所有原图添加到素材库
+            for img_data in self.images:
+                self.cropped_images.append(img_data.copy())
+
         self.app.show_generate_frame(self.cropped_images)

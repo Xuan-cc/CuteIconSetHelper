@@ -162,23 +162,18 @@ class GenerateFrame(ttk.Frame):
         
         self.cards_frame.bind("<Configure>", self._on_cards_frame_configure)
         self.cards_canvas.bind("<Configure>", self._on_canvas_configure)
-        
-        # 进度条
-        self.progress_var = tk.DoubleVar(value=0)
-        self.progress_bar = ttk.Progressbar(
-            self,
-            variable=self.progress_var,
-            maximum=100
-        )
-        self.progress_bar.pack(fill=tk.X, padx=20, pady=5)
-        
-        self.status_label = ttk.Label(self, text="准备就绪")
-        self.status_label.pack(pady=2)
-        
+
         # 按钮区域
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill=tk.X, pady=10, padx=20)
-        
+
+        # 返回上一步按钮
+        ttk.Button(
+            btn_frame,
+            text="返回上一步",
+            command=self._go_back
+        ).pack(side=tk.LEFT, padx=5)
+
         # 生成输出按钮
         generate_btn = tk.Button(
             btn_frame,
@@ -191,6 +186,10 @@ class GenerateFrame(ttk.Frame):
             pady=5
         )
         generate_btn.pack(side=tk.RIGHT, padx=5)
+
+    def _go_back(self):
+        """返回上一步（裁剪界面）"""
+        self.app.go_back_to_crop()
     
     def _on_cards_frame_configure(self, event=None):
         """卡片框架大小改变时更新滚动区域"""
