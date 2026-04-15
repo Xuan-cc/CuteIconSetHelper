@@ -1,5 +1,5 @@
 """
-裁剪界面 - 支持1:1比例裁剪
+裁剪界面 - 支持1:1比例裁剪（改进版：可拖动裁剪框）
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -26,9 +26,14 @@ class CropFrame(ttk.Frame):
         
         # 裁剪框
         self.crop_rect = None
-        self.crop_start_x = 0
-        self.crop_start_y = 0
+        self.crop_x1 = 0  # 裁剪框左上角
+        self.crop_y1 = 0
+        self.crop_x2 = 0  # 裁剪框右下角
+        self.crop_y2 = 0
         self.is_dragging = False
+        self.drag_mode = None  # 'move' 或 'create'
+        self.drag_start_x = 0
+        self.drag_start_y = 0
         
         self._create_widgets()
     
@@ -86,7 +91,7 @@ class CropFrame(ttk.Frame):
         
         ttk.Label(
             crop_control,
-            text="拖动鼠标绘制裁剪区域\n建议保持1:1比例",
+            text="拖动裁剪框可移动位置\n在框外拖动可重新绘制",
             wraplength=180,
             justify=tk.CENTER
         ).pack(pady=10)
@@ -109,6 +114,12 @@ class CropFrame(ttk.Frame):
         
         ttk.Button(
             btn_frame,
+            text="返回第一步",
+            command=self._go_to_input
+        ).pack(fill=tk.X, padx=5, pady=2)
+        
+        ttk.Button(
+            btn_frame,
             text="跳过此图",
             command=self._skip_current
         ).pack(fill=tk.X, padx=5, pady=2)
@@ -121,7 +132,7 @@ class CropFrame(ttk.Frame):
         
         ttk.Button(
             btn_frame,
-            text="完成并继续",
+            text="下一步",
             command=self._finish
         ).pack(fill=tk.X, padx=5, pady=5)
         
@@ -133,10 +144,12 @@ class CropFrame(ttk.Frame):
     def set_images(self, images: tp.List[tp.Dict]):
         """设置要处理的图片"""
         self.images = images
-        self.cropped_images = []
-        self.current_index = 0
+        # 保留已裁剪的图片（如果重新进入）
+        if not self.cropped_images:
+            self.cropped_images = []
+        self.current_index = len(self.cropped_images)  # 从上次位置继续
         
-        # 找到第一个需要裁剪的图片
+        # 找到下一个需要裁剪的图片
         self._find_next_non_square()
         self._load_current_image()
     
@@ -147,7 +160,8 @@ class CropFrame(ttk.Frame):
             if not img.get("is_square", False):
                 return
             # 已经是1:1的，直接加入裁剪完成列表
-            self.cropped_images.append(img)
+            if self.current_index >= len(self.cropped_images):
+                self.cropped_images.append(img)
             self.current_index += 1
     
     def _load_current_image(self):
@@ -233,31 +247,48 @@ class CropFrame(ttk.Frame):
         display_x = self.img_offset_x + (self.img_display_width - display_size) // 2
         display_y = self.img_offset_y + (self.img_display_height - display_size) // 2
         
+        # 设置裁剪框坐标
+        self.crop_x1 = display_x
+        self.crop_y1 = display_y
+        self.crop_x2 = display_x + display_size
+        self.crop_y2 = display_y + display_size
+        
         # 创建裁剪框
+        self._draw_crop_rect()
+    
+    def _draw_crop_rect(self):
+        """绘制裁剪框"""
         if self.crop_rect:
             self.canvas.delete(self.crop_rect)
         
         self.crop_rect = self.canvas.create_rectangle(
-            display_x, display_y,
-            display_x + display_size, display_y + display_size,
+            self.crop_x1, self.crop_y1,
+            self.crop_x2, self.crop_y2,
             outline="red",
             width=2,
             dash=(5, 5)
         )
-        
-        self.crop_start_x = display_x
-        self.crop_start_y = display_y
-        self.crop_end_x = display_x + display_size
-        self.crop_end_y = display_y + display_size
+    
+    def _is_point_in_crop_rect(self, x, y):
+        """检查点是否在裁剪框内"""
+        return (self.crop_x1 <= x <= self.crop_x2 and 
+                self.crop_y1 <= y <= self.crop_y2)
     
     def _on_mouse_down(self, event):
         """鼠标按下"""
+        # 检查是否点击在裁剪框内
+        if self._is_point_in_crop_rect(event.x, event.y):
+            self.drag_mode = 'move'
+            self.drag_start_x = event.x
+            self.drag_start_y = event.y
+        elif (self.img_offset_x <= event.x <= self.img_offset_x + self.img_display_width and
+              self.img_offset_y <= event.y <= self.img_offset_y + self.img_display_height):
+            # 在图片范围内但不在裁剪框内，重新绘制
+            self.drag_mode = 'create'
+            self.crop_x1 = event.x
+            self.crop_y1 = event.y
+        
         self.is_dragging = True
-        # 检查是否在图片范围内
-        if (self.img_offset_x <= event.x <= self.img_offset_x + self.img_display_width and
-            self.img_offset_y <= event.y <= self.img_offset_y + self.img_display_height):
-            self.crop_start_x = event.x
-            self.crop_start_y = event.y
     
     def _on_mouse_drag(self, event):
         """鼠标拖动"""
@@ -268,47 +299,88 @@ class CropFrame(ttk.Frame):
         x = max(self.img_offset_x, min(event.x, self.img_offset_x + self.img_display_width))
         y = max(self.img_offset_y, min(event.y, self.img_offset_y + self.img_display_height))
         
-        self.crop_end_x = x
-        self.crop_end_y = y
+        if self.drag_mode == 'move':
+            # 移动裁剪框
+            dx = x - self.drag_start_x
+            dy = y - self.drag_start_y
+            
+            # 计算新位置
+            new_x1 = self.crop_x1 + dx
+            new_y1 = self.crop_y1 + dy
+            new_x2 = self.crop_x2 + dx
+            new_y2 = self.crop_y2 + dy
+            
+            # 确保不超出图片范围
+            crop_width = self.crop_x2 - self.crop_x1
+            crop_height = self.crop_y2 - self.crop_y1
+            
+            if new_x1 < self.img_offset_x:
+                new_x1 = self.img_offset_x
+                new_x2 = new_x1 + crop_width
+            if new_y1 < self.img_offset_y:
+                new_y1 = self.img_offset_y
+                new_y2 = new_y1 + crop_height
+            if new_x2 > self.img_offset_x + self.img_display_width:
+                new_x2 = self.img_offset_x + self.img_display_width
+                new_x1 = new_x2 - crop_width
+            if new_y2 > self.img_offset_y + self.img_display_height:
+                new_y2 = self.img_offset_y + self.img_display_height
+                new_y1 = new_y2 - crop_height
+            
+            self.crop_x1 = new_x1
+            self.crop_y1 = new_y1
+            self.crop_x2 = new_x2
+            self.crop_y2 = new_y2
+            
+            self.drag_start_x = x
+            self.drag_start_y = y
+            
+            self._draw_crop_rect()
+            
+        elif self.drag_mode == 'create':
+            # 重新绘制裁剪框（保持正方形）
+            width = abs(x - self.crop_x1)
+            height = abs(y - self.crop_y1)
+            size = min(width, height)
+            
+            if x >= self.crop_x1:
+                self.crop_x2 = self.crop_x1 + size
+            else:
+                self.crop_x2 = self.crop_x1
+                self.crop_x1 = self.crop_x1 - size
+            
+            if y >= self.crop_y1:
+                self.crop_y2 = self.crop_y1 + size
+            else:
+                self.crop_y2 = self.crop_y1
+                self.crop_y1 = self.crop_y1 - size
+            
+            # 限制在图片范围内
+            self._constrain_crop_rect()
+            self._draw_crop_rect()
+    
+    def _constrain_crop_rect(self):
+        """确保裁剪框在图片范围内"""
+        crop_width = self.crop_x2 - self.crop_x1
+        crop_height = self.crop_y2 - self.crop_y1
         
-        # 更新裁剪框（保持正方形）
-        self._update_crop_rect()
+        if self.crop_x1 < self.img_offset_x:
+            self.crop_x1 = self.img_offset_x
+            self.crop_x2 = self.crop_x1 + crop_width
+        if self.crop_y1 < self.img_offset_y:
+            self.crop_y1 = self.img_offset_y
+            self.crop_y2 = self.crop_y1 + crop_height
+        if self.crop_x2 > self.img_offset_x + self.img_display_width:
+            self.crop_x2 = self.img_offset_x + self.img_display_width
+            self.crop_x1 = self.crop_x2 - crop_width
+        if self.crop_y2 > self.img_offset_y + self.img_display_height:
+            self.crop_y2 = self.img_offset_y + self.img_display_height
+            self.crop_y1 = self.crop_y2 - crop_height
     
     def _on_mouse_up(self, event):
         """鼠标释放"""
         self.is_dragging = False
-    
-    def _update_crop_rect(self):
-        """更新裁剪框显示"""
-        if self.crop_rect:
-            self.canvas.delete(self.crop_rect)
-        
-        # 计算正方形边长
-        width = abs(self.crop_end_x - self.crop_start_x)
-        height = abs(self.crop_end_y - self.crop_start_y)
-        size = min(width, height)
-        
-        # 确定方向
-        x1 = self.crop_start_x
-        y1 = self.crop_start_y
-        x2 = x1 + size if self.crop_end_x >= self.crop_start_x else x1 - size
-        y2 = y1 + size if self.crop_end_y >= self.crop_start_y else y1 - size
-        
-        # 限制在图片范围内
-        x1 = max(self.img_offset_x, min(x1, self.img_offset_x + self.img_display_width))
-        y1 = max(self.img_offset_y, min(y1, self.img_offset_y + self.img_display_height))
-        x2 = max(self.img_offset_x, min(x2, self.img_offset_x + self.img_display_width))
-        y2 = max(self.img_offset_y, min(y2, self.img_offset_y + self.img_display_height))
-        
-        self.crop_rect = self.canvas.create_rectangle(
-            x1, y1, x2, y2,
-            outline="red",
-            width=2,
-            dash=(5, 5)
-        )
-        
-        self.crop_start_x, self.crop_start_y = min(x1, x2), min(y1, y2)
-        self.crop_end_x, self.crop_end_y = max(x1, x2), max(y1, y2)
+        self.drag_mode = None
     
     def _reset_crop(self):
         """重置裁剪框"""
@@ -318,11 +390,21 @@ class CropFrame(ttk.Frame):
         """自动居中裁剪"""
         self._init_crop_rect()
     
+    def _go_to_input(self):
+        """返回第一步"""
+        # 保存当前进度
+        self.app.image_data = self.images
+        self.app.cropped_images = self.cropped_images
+        self.app.show_input_frame()
+    
     def _skip_current(self):
         """跳过当前图片"""
         # 使用原图
         img_data = self.images[self.current_index]
-        self.cropped_images.append(img_data)
+        if self.current_index >= len(self.cropped_images):
+            self.cropped_images.append(img_data)
+        else:
+            self.cropped_images[self.current_index] = img_data
         
         self.current_index += 1
         self._find_next_non_square()
@@ -334,10 +416,10 @@ class CropFrame(ttk.Frame):
             return
         
         # 计算裁剪区域（转换到原始图片坐标）
-        x1 = (min(self.crop_start_x, self.crop_end_x) - self.img_offset_x) / self.display_scale
-        y1 = (min(self.crop_start_y, self.crop_end_y) - self.img_offset_y) / self.display_scale
-        x2 = (max(self.crop_start_x, self.crop_end_x) - self.img_offset_x) / self.display_scale
-        y2 = (max(self.crop_start_y, self.crop_end_y) - self.img_offset_y) / self.display_scale
+        x1 = (min(self.crop_x1, self.crop_x2) - self.img_offset_x) / self.display_scale
+        y1 = (min(self.crop_y1, self.crop_y2) - self.img_offset_y) / self.display_scale
+        x2 = (max(self.crop_x1, self.crop_x2) - self.img_offset_x) / self.display_scale
+        y2 = (max(self.crop_y1, self.crop_y2) - self.img_offset_y) / self.display_scale
         
         # 转换为整数坐标
         x1, y1 = int(x1), int(y1)
@@ -358,7 +440,10 @@ class CropFrame(ttk.Frame):
         img_data["is_square"] = True
         img_data["cropped"] = True
         
-        self.cropped_images.append(img_data)
+        if self.current_index >= len(self.cropped_images):
+            self.cropped_images.append(img_data)
+        else:
+            self.cropped_images[self.current_index] = img_data
         
         self.current_index += 1
         self._find_next_non_square()

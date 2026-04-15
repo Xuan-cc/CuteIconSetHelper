@@ -101,6 +101,13 @@ class InputFrame(ttk.Frame):
             command=self._clear_list
         ).pack(side=tk.LEFT, padx=10)
         
+        # 如果已经导入过图片（从其他步骤返回），显示继续按钮
+        self.continue_btn = ttk.Button(
+            btn_frame,
+            text="继续处理",
+            command=self._go_next
+        )
+        
         ttk.Button(
             btn_frame,
             text="下一步",

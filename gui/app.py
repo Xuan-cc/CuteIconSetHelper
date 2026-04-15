@@ -17,8 +17,8 @@ class ImageComposerApp:
     def __init__(self, root: tk.Tk, dnd_available: bool = True):
         self.root = root
         self.root.title("图片组合工具")
-        self.root.geometry("900x700")
-        self.root.minsize(800, 600)
+        self.root.geometry("1000x800")  # 增加窗口大小
+        self.root.minsize(900, 700)  # 增加最小尺寸
         self.dnd_available = dnd_available
         
         # 存储当前处理的图片数据
@@ -45,7 +45,23 @@ class ImageComposerApp:
             text="图片组合工具", 
             font=("Microsoft YaHei", 16, "bold")
         )
-        self.title_label.pack(pady=10)
+        self.title_label.pack(pady=5)
+        
+        # 项目地址
+        self.url_label = tk.Label(
+            self.main_frame,
+            text="https://github.com/Xuan-cc/CuteIconSetHelper",
+            font=("Microsoft YaHei", 9),
+            fg="blue",
+            cursor="hand2"
+        )
+        self.url_label.pack(pady=2)
+        self.url_label.bind("<Button-1>", self._open_url)
+        
+    def _open_url(self, event):
+        """打开项目地址"""
+        import webbrowser
+        webbrowser.open("https://github.com/Xuan-cc/CuteIconSetHelper")
         
         # 步骤指示器
         self.step_frame = ttk.Frame(self.main_frame)

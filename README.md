@@ -2,6 +2,10 @@
 
 一个支持拖拽、裁剪、多种排布方式的图片处理工具。
 
+**项目地址**: https://github.com/Xuan-cc/CuteIconSetHelper
+
+**开发方式**: 本项目由 [vibecoding](https://en.wikipedia.org/wiki/Vibe_coding) 完成
+
 ## 功能特性
 
 1. **图片导入**：支持拖拽和选择文件导入

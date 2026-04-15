@@ -43,34 +43,35 @@ class GenerateFrame(ttk.Frame):
         
         ttk.Label(size_frame, text="输出图片尺寸:").pack(side=tk.LEFT)
         self.size_var = tk.StringVar(value="256")
+        self.size_var.trace_add('write', self._on_size_changed)  # 监听变化
         size_entry = ttk.Entry(size_frame, textvariable=self.size_var, width=10)
         size_entry.pack(side=tk.LEFT, padx=5)
-        ttk.Label(size_frame, text="x 256 (像素)").pack(side=tk.LEFT)
+        self.size_label = ttk.Label(size_frame, text="x 256 (像素)")
+        self.size_label.pack(side=tk.LEFT)
         
-        # 排布方式
+        # 排布方式 - 使用中文
         layout_frame = ttk.Frame(config_frame)
         layout_frame.pack(fill=tk.X, padx=10, pady=5)
         
         ttk.Label(layout_frame, text="排布方式:").pack(side=tk.LEFT)
-        self.layout_var = tk.StringVar(value="horizontal")
+        
+        # 中文显示映射
+        self.layout_display = {
+            "横排": "horizontal",
+            "竖排": "vertical",
+            "圆形排布": "circular"
+        }
+        self.layout_reverse = {v: k for k, v in self.layout_display.items()}
+        
+        self.layout_var = tk.StringVar(value="横排")
         layout_combo = ttk.Combobox(
             layout_frame,
             textvariable=self.layout_var,
-            values=["horizontal", "vertical", "circular"],
+            values=["横排", "竖排", "圆形排布"],
             state="readonly",
             width=15
         )
         layout_combo.pack(side=tk.LEFT, padx=5)
-        
-        # 显示中文
-        self.layout_display = {
-            "horizontal": "横排",
-            "vertical": "竖排",
-            "circular": "圆形排布"
-        }
-        
-        # 绑定选择事件
-        layout_combo.bind("<<ComboboxSelected>>", self._on_layout_change)
         
         # 输出目录
         dir_frame = ttk.Frame(config_frame)
@@ -87,8 +88,8 @@ class GenerateFrame(ttk.Frame):
             command=self._browse_dir
         ).pack(side=tk.LEFT, padx=5)
         
-        # 图片预览
-        preview_frame = ttk.LabelFrame(self, text="图片预览")
+        # 已有素材预览（原名：图片预览）
+        preview_frame = ttk.LabelFrame(self, text="已有素材预览")
         preview_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
         # 滚动区域
@@ -124,15 +125,36 @@ class GenerateFrame(ttk.Frame):
         
         ttk.Button(
             btn_frame,
-            text="返回上一步",
-            command=self._go_back
+            text="返回第一步",
+            command=self._go_to_input
         ).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(
             btn_frame,
-            text="生成图片",
-            command=self._generate_images
-        ).pack(side=tk.RIGHT, padx=5)
+            text="返回第二步",
+            command=self._go_to_crop
+        ).pack(side=tk.LEFT, padx=5)
+        
+        # 生成输出按钮（更明显）
+        generate_btn = tk.Button(
+            btn_frame,
+            text="生成输出",
+            command=self._generate_images,
+            bg="#4CAF50",
+            fg="white",
+            font=("Microsoft YaHei", 10, "bold"),
+            padx=20,
+            pady=5
+        )
+        generate_btn.pack(side=tk.RIGHT, padx=5)
+    
+    def _on_size_changed(self, *args):
+        """尺寸变化时同步更新标签"""
+        try:
+            size = int(self.size_var.get())
+            self.size_label.configure(text=f"x {size} (像素)")
+        except ValueError:
+            pass
     
     def set_images(self, images: tp.List[tp.Dict]):
         """设置图片列表"""
@@ -190,10 +212,6 @@ class GenerateFrame(ttk.Frame):
         img_rgb.save(buffer, format="PNG")
         return buffer.getvalue()
     
-    def _on_layout_change(self, event=None):
-        """排布方式改变"""
-        pass  # 可以在这里添加预览更新
-    
     def _browse_dir(self):
         """浏览输出目录"""
         dir_path = filedialog.askdirectory(title="选择输出目录")
@@ -201,9 +219,14 @@ class GenerateFrame(ttk.Frame):
             self.dir_var.set(dir_path)
             self.output_dir = dir_path
     
-    def _go_back(self):
-        """返回上一步"""
+    def _go_to_input(self):
+        """返回第一步"""
         self.app.show_input_frame()
+    
+    def _go_to_crop(self):
+        """返回第二步"""
+        # 传递已裁剪的图片回去
+        self.app.show_crop_frame(self.images)
     
     def _generate_images(self):
         """生成图片"""
@@ -234,7 +257,9 @@ class GenerateFrame(ttk.Frame):
             messagebox.showwarning("提示", "请输入有效的数字")
             return
         
-        layout = self.layout_var.get()
+        # 获取排布方式（转换为英文）
+        layout_cn = self.layout_var.get()
+        layout = self.layout_display.get(layout_cn, "horizontal")
         
         # 开始生成
         self.status_label.configure(text="正在生成图片...")
