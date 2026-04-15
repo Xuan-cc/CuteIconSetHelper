@@ -95,16 +95,6 @@ class CropFrame(ttk.Frame):
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         right_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
-        # 信息面板
-        info_frame = ttk.LabelFrame(control_frame, text="图片信息")
-        info_frame.pack(fill=tk.X, pady=5, padx=5)
-        
-        self.info_size = ttk.Label(info_frame, text="尺寸: -")
-        self.info_size.pack(anchor=tk.W, padx=5, pady=1)
-        
-        self.info_ratio = ttk.Label(info_frame, text="比例: -")
-        self.info_ratio.pack(anchor=tk.W, padx=5, pady=1)
-        
         # 状态提示
         self.status_label = ttk.Label(control_frame, text="就绪", foreground="gray", font=("Microsoft YaHei", 9))
         self.status_label.pack(pady=5)
@@ -210,12 +200,25 @@ class CropFrame(ttk.Frame):
     
     def set_images(self, images: tp.List[tp.Dict]):
         """设置要处理的图片"""
+        # 检查是否是新的一组图片（通过路径比较）
+        is_new_images = False
+        if not hasattr(self, 'images') or len(self.images) != len(images):
+            is_new_images = True
+        else:
+            # 比较路径判断是否为新图片组
+            for i, img in enumerate(images):
+                if i >= len(self.images) or self.images[i].get('path') != img.get('path'):
+                    is_new_images = True
+                    break
+        
         self.images = images
-        # 重置素材库（新会话）
-        self.cropped_images = []
-        # 清除裁剪框状态缓存
-        if hasattr(self, '_crop_states'):
-            self._crop_states.clear()
+        
+        # 只有新图片组才重置素材库和裁剪框状态
+        if is_new_images:
+            self.cropped_images = []
+            # 清除裁剪框状态缓存
+            if hasattr(self, '_crop_states'):
+                self._crop_states.clear()
 
         self.current_index = 0
         self._load_current_image()
@@ -276,12 +279,7 @@ class CropFrame(ttk.Frame):
         img_data = self.images[self.current_index]
         self.original_image = img_data["image"].copy()
         
-        # 更新信息
-        width, height = self.original_image.size
-        self.info_size.configure(text=f"尺寸: {width} x {height}")
-        ratio = width / height
-        self.info_ratio.configure(text=f"比例: {ratio:.2f}:1")
-        
+        # 更新进度标签
         self.progress_label.configure(
             text=f"处理第 {self.current_index + 1} / {len(self.images)} 张图片"
         )
@@ -623,7 +621,7 @@ class CropFrame(ttk.Frame):
         # 显示状态提示（非弹窗）
         self._show_status(f"✓ 已保存裁切 #{len(self.cropped_images)}")
 
-    def _show_status(self, message: str, duration: int = 2000):
+    def _show_status(self, message: str, duration: int = 1000):
         """显示状态提示（自动消失）"""
         self.status_label.configure(text=message, foreground="green")
         self.after(duration, lambda: self.status_label.configure(text="就绪", foreground="gray"))
