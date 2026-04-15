@@ -24,6 +24,7 @@ class GenerateFrame(ttk.Frame):
         self.selected_images: tp.List[bool] = []  # 选中状态
         self.card_frames: tp.List[ttk.Frame] = []
         self.name_entries: tp.List[tk.StringVar] = []
+        self.select_indicators: tp.List[tk.Label] = []  # 选中状态指示器
         
         self._create_widgets()
     
@@ -136,9 +137,11 @@ class GenerateFrame(ttk.Frame):
             command=self._deselect_all
         ).pack(side=tk.RIGHT, padx=2)
         
-        # 已有素材预览（卡片格式）
+        # 已有素材预览（卡片格式）- 使用固定高度而非expand
         preview_frame = ttk.LabelFrame(self, text="选择要使用的素材（点击卡片选中）")
-        preview_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        preview_frame.pack(fill=tk.X, padx=20, pady=5)
+        preview_frame.pack_propagate(False)
+        preview_frame.configure(height=240)  # 限制预览区域高度
         
         # 创建Canvas和滚动条
         canvas_frame = ttk.Frame(preview_frame)
@@ -248,6 +251,12 @@ class GenerateFrame(ttk.Frame):
                         for widget in inner.winfo_children():
                             if isinstance(widget, (tk.Label, tk.Frame)):
                                 widget.configure(bg="white")
+                
+                # 更新选中状态指示器
+                if i < len(self.select_indicators):
+                    select_text = "✓ 已选中" if self.selected_images[i] else "× 未选中"
+                    select_fg = "green" if self.selected_images[i] else "gray"
+                    self.select_indicators[i].configure(text=select_text, fg=select_fg)
     
     def _update_selected_count(self):
         """更新选中数量显示"""
@@ -272,6 +281,7 @@ class GenerateFrame(ttk.Frame):
             widget.destroy()
         self.card_frames.clear()
         self.name_entries.clear()
+        self.select_indicators.clear()
         
         if not self.images:
             return
@@ -281,21 +291,21 @@ class GenerateFrame(ttk.Frame):
         style.configure("Card.TFrame", background="white")
         style.configure("Selected.TFrame", background="#e3f2fd")
         
-        # 每行显示4个卡片
-        cards_per_row = 4
+        # 每行显示5个卡片
+        cards_per_row = 5
         
         for i, img_data in enumerate(self.images):
             # 计算行列
             row = i // cards_per_row
             col = i % cards_per_row
             
-            # 创建卡片框架
+            # 创建卡片框架 - 减小尺寸以适应更小的预览区域
             bg_color = "#e3f2fd" if self.selected_images[i] else "white"
             card = ttk.Frame(
                 self.cards_frame, 
                 style="Selected.TFrame" if self.selected_images[i] else "Card.TFrame",
-                width=180, 
-                height=220
+                width=140, 
+                height=180
             )
             card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
             card.grid_propagate(False)
@@ -304,13 +314,13 @@ class GenerateFrame(ttk.Frame):
             card.bind("<Button-1>", lambda e, idx=i: self._toggle_card_selection(idx))
             
             # 内部框架
-            inner_frame = tk.Frame(card, bg=bg_color, width=170, height=210)
+            inner_frame = tk.Frame(card, bg=bg_color, width=130, height=170)
             inner_frame.place(relx=0.5, rely=0.5, anchor="center")
             inner_frame.bind("<Button-1>", lambda e, idx=i: self._toggle_card_selection(idx))
             
-            # 图片缩略图
+            # 图片缩略图 - 减小尺寸
             img = img_data["image"].copy()
-            img.thumbnail((100, 100))
+            img.thumbnail((80, 80))
             
             photo = tk.PhotoImage(data=self._pil_to_tk_data(img))
             lbl = tk.Label(inner_frame, image=photo, bg=bg_color)
@@ -342,7 +352,7 @@ class GenerateFrame(ttk.Frame):
             info_lbl.bind("<Button-1>", lambda e, idx=i: self._toggle_card_selection(idx))
             
             # 选中状态指示器
-            select_text = "✓ 已选中" if self.selected_images[i] else "○ 点击选中"
+            select_text = "✓ 已选中" if self.selected_images[i] else "× 未选中"
             select_fg = "green" if self.selected_images[i] else "gray"
             select_indicator = tk.Label(
                 inner_frame,
@@ -355,6 +365,7 @@ class GenerateFrame(ttk.Frame):
             select_indicator.bind("<Button-1>", lambda e, idx=i: self._toggle_card_selection(idx))
             
             self.card_frames.append(card)
+            self.select_indicators.append(select_indicator)
         
         # 更新选中计数
         self._update_selected_count()
@@ -507,8 +518,8 @@ class GenerateFrame(ttk.Frame):
                     for idx in combo_indices
                 ]
                 
-                # 生成组合名称
-                combo_name = "".join(image_names[idx] for idx in combo_indices)
+                # 生成组合名称（用英文x连接）
+                combo_name = "x".join(image_names[idx] for idx in combo_indices)
                 
                 # 根据排布方式生成
                 if layout == "horizontal":
@@ -535,7 +546,7 @@ class GenerateFrame(ttk.Frame):
                 for img_data in selected_images
             ]
             
-            combo_name = "".join(image_names)
+            combo_name = "x".join(image_names)
             
             if layout == "horizontal":
                 result = layout_engine.horizontal_layout(all_images)

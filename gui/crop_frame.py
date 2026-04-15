@@ -358,8 +358,13 @@ class CropFrame(ttk.Frame):
             # 转换为PhotoImage
             self.preview_image = ImageTk.PhotoImage(cropped_preview)
             
-            # 清空预览画布并显示
+            # 清空预览画布（填充背景色防止透明像素残留）
             self.preview_canvas.delete("all")
+            self.preview_canvas.create_rectangle(
+                0, 0, 150, 150,
+                fill="#2b2b2b",
+                outline=""
+            )
             self.preview_canvas.create_image(0, 0, anchor=tk.NW, image=self.preview_image)
             
         except Exception as e:
