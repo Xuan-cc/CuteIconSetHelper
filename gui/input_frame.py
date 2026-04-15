@@ -7,6 +7,7 @@ from pathlib import Path
 import typing as tp
 from PIL import Image
 import platform
+import os
 
 
 class InputFrame(ttk.Frame):
@@ -106,62 +107,132 @@ class InputFrame(ttk.Frame):
         ).pack(side=tk.RIGHT, padx=10)
     
     def _setup_drag_drop(self):
-        """设置拖拽支持"""
+        """设置拖拽支持 - 使用更安全的方式"""
         system = platform.system()
         
         if system == "Windows":
             self._setup_windows_drag_drop()
-        elif system == "Darwin":  # macOS
-            self._setup_macos_drag_drop()
-        else:  # Linux
-            self._setup_linux_drag_drop()
+        else:
+            self.drag_hint_label.configure(
+                text="请使用'选择图片'按钮导入文件",
+                foreground="gray"
+            )
     
     def _setup_windows_drag_drop(self):
-        """设置Windows拖拽支持"""
+        """设置Windows拖拽支持 - 使用tkinterDnD2作为首选"""
         try:
-            # 尝试使用windnd库
-            import windnd
-            windnd.hook_dropfiles(self.drop_frame, func=self._on_files_dropped)
-            self.drag_hint_label.configure(text="✓ 拖拽功能已启用 - 支持拖拽图片到上方区域")
-        except ImportError:
-            # 如果windnd不可用，提示用户
+            # 首选：使用tkinterdnd2（更稳定）
+            from tkinterdnd2 import DND_FILES, TkinterDnD
+            
+            # 注册为拖拽目标
+            self.drop_frame.drop_target_register(DND_FILES)
+            self.drop_frame.dnd_bind('<<Drop>>', self._on_tkdnd_drop)
+            
             self.drag_hint_label.configure(
-                text="提示：如需拖拽功能，请运行: pip install windnd",
+                text="✓ 拖拽功能已启用 - 支持拖拽图片到上方区域",
+                foreground="green"
+            )
+            return
+        except ImportError:
+            pass
+        
+        # 备选：使用windnd
+        try:
+            import windnd
+            
+            # 使用包装函数捕获异常
+            def safe_drop_callback(file_list):
+                try:
+                    self._on_files_dropped(file_list)
+                except Exception as e:
+                    print(f"拖拽处理错误: {e}")
+                    messagebox.showerror("错误", f"处理拖拽文件时出错:\n{str(e)}")
+            
+            windnd.hook_dropfiles(self.drop_frame, func=safe_drop_callback)
+            
+            self.drag_hint_label.configure(
+                text="✓ 拖拽功能已启用 - 支持拖拽图片到上方区域",
+                foreground="green"
+            )
+        except ImportError:
+            self.drag_hint_label.configure(
+                text="提示：如需拖拽功能，请运行: pip install tkinterdnd2",
+                foreground="orange"
+            )
+        except Exception as e:
+            print(f"设置拖拽失败: {e}")
+            self.drag_hint_label.configure(
+                text="拖拽功能初始化失败，请使用按钮选择",
                 foreground="orange"
             )
     
-    def _setup_macos_drag_drop(self):
-        """设置macOS拖拽支持"""
-        self.drag_hint_label.configure(
-            text="macOS: 请使用'选择图片'按钮导入",
-            foreground="gray"
-        )
+    def _on_tkdnd_drop(self, event):
+        """处理tkinterdnd2拖拽"""
+        try:
+            # 获取拖拽的文件路径
+            data = event.data
+            if not data:
+                return
+            
+            # 解析文件路径（处理空格和特殊字符）
+            files = self._parse_drop_data(data)
+            
+            for file_path in files:
+                if os.path.isfile(file_path):
+                    self._add_image(file_path)
+                    
+        except Exception as e:
+            print(f"处理拖拽失败: {e}")
+            messagebox.showerror("错误", f"处理拖拽文件时出错:\n{str(e)}")
     
-    def _setup_linux_drag_drop(self):
-        """设置Linux拖拽支持"""
-        self.drag_hint_label.configure(
-            text="Linux: 请使用'选择图片'按钮导入",
-            foreground="gray"
-        )
+    def _parse_drop_data(self, data: str) -> tp.List[str]:
+        """解析拖拽数据，提取文件路径"""
+        files = []
+        
+        # 处理Windows路径格式
+        # 格式可能是: {C:\path\to\file.png} C:\path\to\file2.png
+        import re
+        
+        # 匹配花括号包围的路径和普通路径
+        pattern = r'\{([^}]+)\}|([^\s]+)'
+        matches = re.findall(pattern, data)
+        
+        for match in matches:
+            path = match[0] or match[1]
+            if path:
+                # 去除引号
+                path = path.strip('"').strip("'")
+                # 转换为标准路径
+                path = os.path.normpath(path)
+                files.append(path)
+        
+        return files
     
     def _on_files_dropped(self, file_list):
-        """处理拖拽的文件"""
-        for file_path in file_list:
-            # 处理不同编码
-            if isinstance(file_path, bytes):
-                try:
-                    file_path = file_path.decode('utf-8')
-                except UnicodeDecodeError:
+        """处理windnd拖拽的文件"""
+        try:
+            for file_path in file_list:
+                # 处理不同编码
+                if isinstance(file_path, bytes):
                     try:
-                        file_path = file_path.decode('gbk')
+                        file_path = file_path.decode('utf-8')
                     except UnicodeDecodeError:
-                        file_path = file_path.decode('latin-1')
-            
-            file_path = str(file_path)
-            # 去除可能的花括号
-            file_path = file_path.strip('{}')
-            
-            self._add_image(file_path)
+                        try:
+                            file_path = file_path.decode('gbk')
+                        except UnicodeDecodeError:
+                            file_path = file_path.decode('latin-1')
+                
+                file_path = str(file_path)
+                # 去除可能的花括号
+                file_path = file_path.strip('{}').strip('"')
+                # 标准化路径
+                file_path = os.path.normpath(file_path)
+                
+                if os.path.isfile(file_path):
+                    self._add_image(file_path)
+        except Exception as e:
+            print(f"处理拖拽文件错误: {e}")
+            messagebox.showerror("错误", f"处理拖拽文件时出错:\n{str(e)}")
     
     def _on_click_select(self, event):
         """点击选择文件"""
@@ -169,32 +240,39 @@ class InputFrame(ttk.Frame):
     
     def _select_files(self):
         """选择图片文件"""
-        files = filedialog.askopenfilenames(
-            title="选择图片",
-            filetypes=[
-                ("图片文件", "*.png *.jpg *.jpeg *.gif *.bmp *.tiff *.webp"),
-                ("PNG", "*.png"),
-                ("JPEG", "*.jpg *.jpeg"),
-                ("所有文件", "*.*")
-            ]
-        )
-        for file_path in files:
-            self._add_image(file_path)
+        try:
+            files = filedialog.askopenfilenames(
+                title="选择图片",
+                filetypes=[
+                    ("图片文件", "*.png *.jpg *.jpeg *.gif *.bmp *.tiff *.webp"),
+                    ("PNG", "*.png"),
+                    ("JPEG", "*.jpg *.jpeg"),
+                    ("所有文件", "*.*")
+                ]
+            )
+            for file_path in files:
+                self._add_image(file_path)
+        except Exception as e:
+            messagebox.showerror("错误", f"选择文件时出错:\n{str(e)}")
     
     def _add_image(self, file_path: str):
         """添加图片到列表"""
-        file_path = str(file_path)
-        
-        # 检查是否已经存在
-        if file_path in self.image_paths:
-            return
-        
-        # 检查文件类型
-        ext = Path(file_path).suffix.lower()
-        if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp']:
-            return
-        
         try:
+            file_path = str(file_path)
+            
+            # 检查是否已经存在
+            if file_path in self.image_paths:
+                return
+            
+            # 检查文件类型
+            ext = Path(file_path).suffix.lower()
+            if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp']:
+                return
+            
+            # 检查文件是否存在
+            if not os.path.exists(file_path):
+                return
+            
             # 加载图片并检查尺寸
             img = Image.open(file_path)
             width, height = img.size
@@ -223,6 +301,7 @@ class InputFrame(ttk.Frame):
             self.listbox.insert(tk.END, display_text)
             
         except Exception as e:
+            print(f"添加图片错误: {e}")
             messagebox.showerror("错误", f"无法加载图片:\n{file_path}\n\n{str(e)}")
     
     def _clear_list(self):
