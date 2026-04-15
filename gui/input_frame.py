@@ -6,7 +6,7 @@ from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 import typing as tp
 from PIL import Image
-import tkinter.dnd as dnd
+import platform
 
 
 class InputFrame(ttk.Frame):
@@ -19,6 +19,7 @@ class InputFrame(ttk.Frame):
         self.images: tp.List[tp.Dict] = []
         
         self._create_widgets()
+        self._setup_drag_drop()
     
     def _create_widgets(self):
         """创建界面组件"""
@@ -32,12 +33,13 @@ class InputFrame(ttk.Frame):
             font=("Microsoft YaHei", 12)
         ).pack(pady=5)
         
-        ttk.Label(
+        self.drag_hint_label = ttk.Label(
             hint_frame,
             text="支持拖拽图片到下方区域，或点击按钮选择",
             font=("Microsoft YaHei", 9),
             foreground="gray"
-        ).pack(pady=5)
+        )
+        self.drag_hint_label.pack(pady=5)
         
         # 拖拽区域
         self.drop_frame = tk.Frame(
@@ -60,15 +62,9 @@ class InputFrame(ttk.Frame):
         )
         self.drop_label.pack(expand=True)
         
-        # 绑定拖拽事件
-        self.drop_frame.bind("<Enter>", self._on_drag_enter)
-        self.drop_frame.bind("<Leave>", self._on_drag_leave)
+        # 绑定点击事件
         self.drop_frame.bind("<Button-1>", self._on_click_select)
         self.drop_label.bind("<Button-1>", self._on_click_select)
-        
-        # Windows 拖拽支持
-        self.drop_frame.bind("<B1-Motion>", self._on_drag_motion)
-        self._setup_windows_drop()
         
         # 图片列表区域
         list_frame = ttk.LabelFrame(self, text="已导入的图片")
@@ -109,54 +105,63 @@ class InputFrame(ttk.Frame):
             command=self._go_next
         ).pack(side=tk.RIGHT, padx=10)
     
-    def _setup_windows_drop(self):
+    def _setup_drag_drop(self):
+        """设置拖拽支持"""
+        system = platform.system()
+        
+        if system == "Windows":
+            self._setup_windows_drag_drop()
+        elif system == "Darwin":  # macOS
+            self._setup_macos_drag_drop()
+        else:  # Linux
+            self._setup_linux_drag_drop()
+    
+    def _setup_windows_drag_drop(self):
         """设置Windows拖拽支持"""
         try:
+            # 尝试使用windnd库
             import windnd
-            windnd.hook_dropfiles(
-                self.drop_frame,
-                func=self._on_windows_drop
-            )
+            windnd.hook_dropfiles(self.drop_frame, func=self._on_files_dropped)
+            self.drag_hint_label.configure(text="✓ 拖拽功能已启用 - 支持拖拽图片到上方区域")
         except ImportError:
-            # 如果没有windnd，尝试使用TkinterDnD2
-            try:
-                from TkinterDnD2 import TkinterDnD, DND_FILES
-                self.drop_frame.drop_target_register(DND_FILES)
-                self.drop_frame.dnd_bind('<<Drop>>', self._on_tkdnd_drop)
-            except ImportError:
-                pass  # 拖拽功能不可用
+            # 如果windnd不可用，提示用户
+            self.drag_hint_label.configure(
+                text="提示：如需拖拽功能，请运行: pip install windnd",
+                foreground="orange"
+            )
     
-    def _on_drag_enter(self, event):
-        """拖拽进入"""
-        self.drop_frame.configure(bg="#e0e8ff")
-        self.drop_label.configure(bg="#e0e8ff")
+    def _setup_macos_drag_drop(self):
+        """设置macOS拖拽支持"""
+        self.drag_hint_label.configure(
+            text="macOS: 请使用"选择图片"按钮导入",
+            foreground="gray"
+        )
     
-    def _on_drag_leave(self, event):
-        """拖拽离开"""
-        self.drop_frame.configure(bg="#f0f0f0")
-        self.drop_label.configure(bg="#f0f0f0")
+    def _setup_linux_drag_drop(self):
+        """设置Linux拖拽支持"""
+        self.drag_hint_label.configure(
+            text="Linux: 请使用"选择图片"按钮导入",
+            foreground="gray"
+        )
     
-    def _on_drag_motion(self, event):
-        """拖拽移动"""
-        pass
-    
-    def _on_windows_drop(self, file_list):
-        """Windows拖拽文件"""
+    def _on_files_dropped(self, file_list):
+        """处理拖拽的文件"""
         for file_path in file_list:
-            file_path = file_path.decode('gbk') if isinstance(file_path, bytes) else file_path
+            # 处理不同编码
+            if isinstance(file_path, bytes):
+                try:
+                    file_path = file_path.decode('utf-8')
+                except UnicodeDecodeError:
+                    try:
+                        file_path = file_path.decode('gbk')
+                    except UnicodeDecodeError:
+                        file_path = file_path.decode('latin-1')
+            
+            file_path = str(file_path)
+            # 去除可能的花括号
+            file_path = file_path.strip('{}')
+            
             self._add_image(file_path)
-    
-    def _on_tkdnd_drop(self, event):
-        """TkinterDnD拖拽"""
-        files = event.data
-        if files:
-            # 解析拖拽的文件路径
-            import re
-            paths = re.findall(r'\{([^}]+)\}|(\S+)', files)
-            for match in paths:
-                path = match[0] or match[1]
-                if path:
-                    self._add_image(path)
     
     def _on_click_select(self, event):
         """点击选择文件"""
@@ -193,6 +198,10 @@ class InputFrame(ttk.Frame):
             # 加载图片并检查尺寸
             img = Image.open(file_path)
             width, height = img.size
+            
+            # 转换为RGBA模式以支持透明通道
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
             
             # 存储图片信息
             image_info = {
