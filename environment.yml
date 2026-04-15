@@ -8,4 +8,5 @@ dependencies:
   - pillow
   - numpy
   - pip:
+    - windnd       # Windows拖拽支持
     - pyinstaller  # 用于打包
