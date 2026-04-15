@@ -28,6 +28,9 @@ class ImageComposerApp:
         # 创建主框架
         self._create_main_frame()
         
+        # 创建步骤指示器
+        self._create_step_indicator()
+        
         # 初始化各个界面
         self._init_frames()
         
@@ -62,8 +65,9 @@ class ImageComposerApp:
         """打开项目地址"""
         import webbrowser
         webbrowser.open("https://github.com/Xuan-cc/CuteIconSetHelper")
-        
-        # 步骤指示器
+    
+    def _create_step_indicator(self):
+        """创建步骤指示器"""
         self.step_frame = ttk.Frame(self.main_frame)
         self.step_frame.pack(fill=tk.X, pady=5)
         
