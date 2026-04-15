@@ -1,11 +1,10 @@
-﻿"""
-生成界面 - 配置输出选项并生成图片
+"""
+生成界面 - 配置输出选项并生成图片（完整版）
 """
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image
 import typing as tp
-from pathlib import Path
 import itertools
 import os
 
@@ -21,7 +20,10 @@ class GenerateFrame(ttk.Frame):
         self.app = app
         self.images: tp.List[tp.Dict] = []
         self.output_dir = ""
-        self.image_names: tp.List[str] = []  # 存储用户定义的图片名称
+        self.image_names: tp.List[str] = []
+        self.selected_images: tp.List[bool] = []  # 选中状态
+        self.card_frames: tp.List[ttk.Frame] = []
+        self.name_entries: tp.List[tk.StringVar] = []
         
         self._create_widgets()
     
@@ -32,37 +34,35 @@ class GenerateFrame(ttk.Frame):
             self,
             text="生成配置",
             font=("Microsoft YaHei", 12, "bold")
-        ).pack(pady=10)
+        ).pack(pady=5)
         
         # 配置区域
         config_frame = ttk.LabelFrame(self, text="输出设置")
-        config_frame.pack(fill=tk.X, padx=20, pady=10)
+        config_frame.pack(fill=tk.X, padx=20, pady=5)
         
         # 图片尺寸
         size_frame = ttk.Frame(config_frame)
-        size_frame.pack(fill=tk.X, padx=10, pady=5)
+        size_frame.pack(fill=tk.X, padx=10, pady=3)
         
         ttk.Label(size_frame, text="输出图片尺寸:").pack(side=tk.LEFT)
         self.size_var = tk.StringVar(value="256")
-        self.size_var.trace_add('write', self._on_size_changed)  # 监听变化
+        self.size_var.trace_add('write', self._on_size_changed)
         size_entry = ttk.Entry(size_frame, textvariable=self.size_var, width=10)
         size_entry.pack(side=tk.LEFT, padx=5)
         self.size_label = ttk.Label(size_frame, text="x 256 (像素)")
         self.size_label.pack(side=tk.LEFT)
         
-        # 排布方式 - 使用中文
+        # 排布方式
         layout_frame = ttk.Frame(config_frame)
-        layout_frame.pack(fill=tk.X, padx=10, pady=5)
+        layout_frame.pack(fill=tk.X, padx=10, pady=3)
         
         ttk.Label(layout_frame, text="排布方式:").pack(side=tk.LEFT)
         
-        # 中文显示映射
         self.layout_display = {
             "横排": "horizontal",
             "竖排": "vertical",
             "圆形排布": "circular"
         }
-        self.layout_reverse = {v: k for k, v in self.layout_display.items()}
         
         self.layout_var = tk.StringVar(value="横排")
         layout_combo = ttk.Combobox(
@@ -74,9 +74,32 @@ class GenerateFrame(ttk.Frame):
         )
         layout_combo.pack(side=tk.LEFT, padx=5)
         
+        # 最大组合图数
+        max_combo_frame = ttk.Frame(config_frame)
+        max_combo_frame.pack(fill=tk.X, padx=10, pady=3)
+        
+        ttk.Label(max_combo_frame, text="最大组合图数:").pack(side=tk.LEFT)
+        self.max_combo_var = tk.StringVar(value="0")
+        max_combo_entry = ttk.Entry(max_combo_frame, textvariable=self.max_combo_var, width=10)
+        max_combo_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Label(max_combo_frame, text="(0=无限制, 必须≤选中素材数)", 
+                 font=("Microsoft YaHei", 8), foreground="gray").pack(side=tk.LEFT)
+        
+        # 全体都有选项
+        all_together_frame = ttk.Frame(config_frame)
+        all_together_frame.pack(fill=tk.X, padx=10, pady=3)
+        
+        self.all_together_var = tk.BooleanVar(value=True)
+        all_together_check = ttk.Checkbutton(
+            all_together_frame, 
+            text="全体都有（额外输出所有选中素材组合到一起的结果）",
+            variable=self.all_together_var
+        )
+        all_together_check.pack(anchor=tk.W)
+        
         # 输出目录
         dir_frame = ttk.Frame(config_frame)
-        dir_frame.pack(fill=tk.X, padx=10, pady=5)
+        dir_frame.pack(fill=tk.X, padx=10, pady=3)
         
         ttk.Label(dir_frame, text="输出目录:").pack(side=tk.LEFT)
         self.dir_var = tk.StringVar()
@@ -89,24 +112,53 @@ class GenerateFrame(ttk.Frame):
             command=self._browse_dir
         ).pack(side=tk.LEFT, padx=5)
         
-        # 已有素材预览（原名：图片预览）
-        preview_frame = ttk.LabelFrame(self, text="已有素材预览（可编辑名称）")
-        preview_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        # 提示信息
+        hint_frame = ttk.Frame(self)
+        hint_frame.pack(fill=tk.X, padx=20, pady=2)
         
-        # 滚动区域
-        self.canvas = tk.Canvas(
-            preview_frame,
-            bg="#f0f0f0"
+        self.selected_count_label = ttk.Label(
+            hint_frame,
+            text="已选中 0 个素材（点击卡片选中/取消）",
+            font=("Microsoft YaHei", 9),
+            foreground="blue"
         )
-        scrollbar = ttk.Scrollbar(preview_frame, orient=tk.VERTICAL, command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=scrollbar.set)
+        self.selected_count_label.pack(side=tk.LEFT)
         
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        ttk.Button(
+            hint_frame,
+            text="全选",
+            command=self._select_all
+        ).pack(side=tk.RIGHT, padx=2)
         
-        # 预览内容框架
-        self.preview_inner = ttk.Frame(self.canvas)
-        self.canvas_window = self.canvas.create_window((0, 0), window=self.preview_inner, anchor=tk.NW)
+        ttk.Button(
+            hint_frame,
+            text="取消全选",
+            command=self._deselect_all
+        ).pack(side=tk.RIGHT, padx=2)
+        
+        # 已有素材预览（卡片格式）
+        preview_frame = ttk.LabelFrame(self, text="选择要使用的素材（点击卡片选中）")
+        preview_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        
+        # 创建Canvas和滚动条
+        canvas_frame = ttk.Frame(preview_frame)
+        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.cards_canvas = tk.Canvas(canvas_frame, bg="#f0f0f0")
+        h_scrollbar = ttk.Scrollbar(canvas_frame, orient="horizontal", command=self.cards_canvas.xview)
+        v_scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=self.cards_canvas.yview)
+        self.cards_canvas.configure(xscrollcommand=h_scrollbar.set, yscrollcommand=v_scrollbar.set)
+        
+        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.cards_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # 卡片容器
+        self.cards_frame = ttk.Frame(self.cards_canvas)
+        self.cards_canvas_window = self.cards_canvas.create_window((0, 0), window=self.cards_frame, anchor=tk.NW)
+        
+        self.cards_frame.bind("<Configure>", self._on_cards_frame_configure)
+        self.cards_canvas.bind("<Configure>", self._on_canvas_configure)
         
         # 进度条
         self.progress_var = tk.DoubleVar(value=0)
@@ -118,13 +170,13 @@ class GenerateFrame(ttk.Frame):
         self.progress_bar.pack(fill=tk.X, padx=20, pady=5)
         
         self.status_label = ttk.Label(self, text="准备就绪")
-        self.status_label.pack(pady=5)
+        self.status_label.pack(pady=2)
         
         # 按钮区域
         btn_frame = ttk.Frame(self)
-        btn_frame.pack(fill=tk.X, pady=20, padx=20)
+        btn_frame.pack(fill=tk.X, pady=10, padx=20)
         
-        # 生成输出按钮（更明显）
+        # 生成输出按钮
         generate_btn = tk.Button(
             btn_frame,
             text="生成输出",
@@ -137,6 +189,14 @@ class GenerateFrame(ttk.Frame):
         )
         generate_btn.pack(side=tk.RIGHT, padx=5)
     
+    def _on_cards_frame_configure(self, event=None):
+        """卡片框架大小改变时更新滚动区域"""
+        self.cards_canvas.configure(scrollregion=self.cards_canvas.bbox("all"))
+    
+    def _on_canvas_configure(self, event=None):
+        """画布大小改变时更新窗口大小"""
+        self.cards_canvas.itemconfig(self.cards_canvas_window, width=event.width)
+    
     def _on_size_changed(self, *args):
         """尺寸变化时同步更新标签"""
         try:
@@ -145,67 +205,163 @@ class GenerateFrame(ttk.Frame):
         except ValueError:
             pass
     
+    def _select_all(self):
+        """全选所有图片"""
+        for i in range(len(self.selected_images)):
+            self.selected_images[i] = True
+        self._update_card_styles()
+        self._update_selected_count()
+    
+    def _deselect_all(self):
+        """取消全选"""
+        for i in range(len(self.selected_images)):
+            self.selected_images[i] = False
+        self._update_card_styles()
+        self._update_selected_count()
+    
+    def _toggle_card_selection(self, index):
+        """切换卡片选中状态"""
+        self.selected_images[index] = not self.selected_images[index]
+        self._update_card_styles()
+        self._update_selected_count()
+    
+    def _update_card_styles(self):
+        """更新卡片样式"""
+        for i, frame in enumerate(self.card_frames):
+            if i < len(self.selected_images):
+                # 查找内部框架
+                inner = None
+                for child in frame.winfo_children():
+                    if isinstance(child, tk.Frame):
+                        inner = child
+                        break
+                if inner:
+                    if self.selected_images[i]:
+                        frame.configure(style="Selected.TFrame")
+                        inner.configure(bg="#e3f2fd")
+                        for widget in inner.winfo_children():
+                            if isinstance(widget, (tk.Label, tk.Frame)):
+                                widget.configure(bg="#e3f2fd")
+                    else:
+                        frame.configure(style="Card.TFrame")
+                        inner.configure(bg="white")
+                        for widget in inner.winfo_children():
+                            if isinstance(widget, (tk.Label, tk.Frame)):
+                                widget.configure(bg="white")
+    
+    def _update_selected_count(self):
+        """更新选中数量显示"""
+        count = sum(self.selected_images)
+        self.selected_count_label.configure(text=f"已选中 {count} 个素材（点击卡片选中/取消）")
+    
     def set_images(self, images: tp.List[tp.Dict]):
         """设置图片列表"""
         self.images = images
         # 初始化图片名称（默认使用序号）
         if not self.image_names or len(self.image_names) != len(images):
             self.image_names = [f"{i+1}" for i in range(len(images))]
+        # 初始化选择状态（默认全选）
+        if not self.selected_images or len(self.selected_images) != len(images):
+            self.selected_images = [True] * len(images)
         self._update_preview()
     
     def _update_preview(self):
-        """更新图片预览（支持重命名）"""
-        # 清空预览区域
-        for widget in self.preview_inner.winfo_children():
+        """更新图片预览（卡片格式）"""
+        # 清空现有卡片
+        for widget in self.cards_frame.winfo_children():
             widget.destroy()
+        self.card_frames.clear()
+        self.name_entries.clear()
         
         if not self.images:
             return
         
-        # 存储名称输入框的引用
-        self.name_entries = []
+        # 创建卡片样式
+        style = ttk.Style()
+        style.configure("Card.TFrame", background="white")
+        style.configure("Selected.TFrame", background="#e3f2fd")
         
-        # 显示所有图片缩略图
+        # 每行显示4个卡片
+        cards_per_row = 4
+        
         for i, img_data in enumerate(self.images):
-            # 创建框架
-            frame = ttk.Frame(self.preview_inner)
-            frame.pack(fill=tk.X, padx=5, pady=5)
+            # 计算行列
+            row = i // cards_per_row
+            col = i % cards_per_row
+            
+            # 创建卡片框架
+            bg_color = "#e3f2fd" if self.selected_images[i] else "white"
+            card = ttk.Frame(
+                self.cards_frame, 
+                style="Selected.TFrame" if self.selected_images[i] else "Card.TFrame",
+                width=180, 
+                height=220
+            )
+            card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+            card.grid_propagate(False)
+            
+            # 绑定点击事件
+            card.bind("<Button-1>", lambda e, idx=i: self._toggle_card_selection(idx))
+            
+            # 内部框架
+            inner_frame = tk.Frame(card, bg=bg_color, width=170, height=210)
+            inner_frame.place(relx=0.5, rely=0.5, anchor="center")
+            inner_frame.bind("<Button-1>", lambda e, idx=i: self._toggle_card_selection(idx))
             
             # 图片缩略图
             img = img_data["image"].copy()
-            img.thumbnail((80, 80))
+            img.thumbnail((100, 100))
             
             photo = tk.PhotoImage(data=self._pil_to_tk_data(img))
-            lbl = ttk.Label(frame, image=photo)
-            lbl.image = photo  # 保持引用
-            lbl.pack(side=tk.LEFT, padx=5)
-            
-            # 信息区域
-            info_frame = ttk.Frame(frame)
-            info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+            lbl = tk.Label(inner_frame, image=photo, bg=bg_color)
+            lbl.image = photo
+            lbl.pack(pady=5)
+            lbl.bind("<Button-1>", lambda e, idx=i: self._toggle_card_selection(idx))
             
             # 名称输入框
-            name_frame = ttk.Frame(info_frame)
-            name_frame.pack(fill=tk.X, pady=2)
+            name_frame = tk.Frame(inner_frame, bg=bg_color)
+            name_frame.pack(fill=tk.X, padx=5, pady=2)
             
-            ttk.Label(name_frame, text="名称:").pack(side=tk.LEFT)
+            tk.Label(name_frame, text="名称:", font=("Microsoft YaHei", 8), bg=bg_color).pack(side=tk.LEFT)
             name_var = tk.StringVar(value=self.image_names[i])
-            name_entry = ttk.Entry(name_frame, textvariable=name_var, width=20)
-            name_entry.pack(side=tk.LEFT, padx=5)
+            name_entry = tk.Entry(name_frame, textvariable=name_var, width=12, font=("Microsoft YaHei", 8))
+            name_entry.pack(side=tk.LEFT, padx=2)
             
-            # 保存引用以便后续获取
+            # 保存引用
             self.name_entries.append(name_var)
             
             # 尺寸信息
-            ttk.Label(
-                info_frame,
-                text=f"尺寸: {img_data['width']}x{img_data['height']}",
-                font=("Microsoft YaHei", 8)
-            ).pack(anchor=tk.W)
+            info_lbl = tk.Label(
+                inner_frame,
+                text=f"{img_data['width']}x{img_data['height']}",
+                font=("Microsoft YaHei", 8),
+                fg="gray",
+                bg=bg_color
+            )
+            info_lbl.pack(pady=2)
+            info_lbl.bind("<Button-1>", lambda e, idx=i: self._toggle_card_selection(idx))
+            
+            # 选中状态指示器
+            select_text = "✓ 已选中" if self.selected_images[i] else "○ 点击选中"
+            select_fg = "green" if self.selected_images[i] else "gray"
+            select_indicator = tk.Label(
+                inner_frame,
+                text=select_text,
+                font=("Microsoft YaHei", 8, "bold"),
+                fg=select_fg,
+                bg=bg_color
+            )
+            select_indicator.pack(pady=2)
+            select_indicator.bind("<Button-1>", lambda e, idx=i: self._toggle_card_selection(idx))
+            
+            self.card_frames.append(card)
+        
+        # 更新选中计数
+        self._update_selected_count()
         
         # 更新滚动区域
-        self.preview_inner.update_idletasks()
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self.cards_frame.update_idletasks()
+        self._on_cards_frame_configure()
     
     def _pil_to_tk_data(self, img: Image.Image) -> bytes:
         """将PIL图片转换为Tk可用数据"""
@@ -227,6 +383,26 @@ class GenerateFrame(ttk.Frame):
         # 验证
         if not self.images:
             messagebox.showwarning("提示", "没有可生成的图片")
+            return
+        
+        # 获取选中的图片
+        selected_indices = [i for i, selected in enumerate(self.selected_images) if selected]
+        
+        if not selected_indices:
+            messagebox.showwarning("提示", "请至少选择一张图片")
+            return
+        
+        # 验证最大组合图数
+        try:
+            max_combo = int(self.max_combo_var.get())
+            if max_combo < 0:
+                messagebox.showwarning("提示", "最大组合图数不能为负数")
+                return
+            if max_combo > len(selected_indices):
+                messagebox.showwarning("提示", f"最大组合图数({max_combo})不能大于选中素材数({len(selected_indices)})")
+                return
+        except ValueError:
+            messagebox.showwarning("提示", "最大组合图数请输入有效数字")
             return
         
         output_dir = self.dir_var.get().strip()
@@ -255,24 +431,31 @@ class GenerateFrame(ttk.Frame):
         layout_cn = self.layout_var.get()
         layout = self.layout_display.get(layout_cn, "horizontal")
         
-        # 获取用户定义的图片名称
-        image_names = [var.get() if var.get().strip() else f"{i+1}" 
-                      for i, var in enumerate(self.name_entries)]
+        # 获取用户定义的图片名称（仅选中的）
+        image_names = []
+        for i in selected_indices:
+            if i < len(self.name_entries):
+                name = self.name_entries[i].get().strip()
+                image_names.append(name if name else f"{i+1}")
+            else:
+                image_names.append(f"{i+1}")
+        
+        # 获取选中的图片数据
+        selected_images = [self.images[i] for i in selected_indices]
         
         # 开始生成
-        self.status_label.configure(text="正在生成图片...")
+        self.status_label.configure(text=f"正在生成图片（使用{len(selected_images)}张素材）...")
         self.progress_var.set(0)
         self.update_idletasks()
         
         try:
-            self._do_generate(tile_size, layout, output_dir, image_names)
+            self._do_generate(tile_size, layout, output_dir, image_names, selected_images, max_combo)
             self.status_label.configure(text="生成完成！")
             self.progress_var.set(100)
             
             # 询问是否打开输出目录
             if messagebox.askyesno("完成", f"图片已生成到:\n{output_dir}\n\n是否打开输出目录？"):
                 import subprocess
-                # 使用实际输出目录
                 actual_output_dir = os.path.normpath(output_dir)
                 if os.path.exists(actual_output_dir):
                     subprocess.run(["explorer", actual_output_dir])
@@ -283,26 +466,30 @@ class GenerateFrame(ttk.Frame):
             self.status_label.configure(text=f"生成失败: {str(e)}")
             messagebox.showerror("错误", f"生成图片时出错:\n{str(e)}")
     
-    def _do_generate(self, tile_size: int, layout: str, output_dir: str, image_names: tp.List[str]):
-        """执行生成 - 支持所有组合"""
+    def _do_generate(self, tile_size: int, layout: str, output_dir: str, 
+                    image_names: tp.List[str], selected_images: tp.List[tp.Dict], max_combo: int):
+        """执行生成 - 支持最大组合数限制"""
         processor = ImageProcessor()
         layout_engine = LayoutEngine()
         
-        n = len(self.images)
+        n = len(selected_images)
         
-        # 计算总任务数：所有可能的组合
-        # 1张图: C(n,1) = n
-        # 2张图: C(n,2) 
-        # 3张图: C(n,3)
-        # ...
-        # n张图: C(n,n) = 1
-        total_tasks = sum(self._count_combinations(n, k) for k in range(1, n+1))
+        # 确定实际的最大组合数
+        actual_max_combo = max_combo if max_combo > 0 else n
+        actual_max_combo = min(actual_max_combo, n)
+        
+        # 计算总任务数
+        total_tasks = sum(self._count_combinations(n, k) for k in range(1, actual_max_combo + 1))
+        
+        # 如果勾选了"全体都有"，额外加1
+        if self.all_together_var.get():
+            total_tasks += 1
+        
         completed = 0
         
         # 1. 生成单张图片 (k=1)
-        for i, img_data in enumerate(self.images):
+        for i, img_data in enumerate(selected_images):
             img = processor.resize_image(img_data["image"], tile_size, tile_size)
-            # 使用用户定义的名称
             output_path = os.path.join(output_dir, f"{image_names[i]}.png")
             img.save(output_path, "PNG")
             
@@ -310,17 +497,17 @@ class GenerateFrame(ttk.Frame):
             self.progress_var.set(completed / total_tasks * 100)
             self.update_idletasks()
         
-        # 2. 生成所有组合 (k=2 到 k=n)
-        for k in range(2, n + 1):
+        # 2. 生成组合 (k=2 到 k=actual_max_combo)
+        for k in range(2, actual_max_combo + 1):
             indices_list = list(range(n))
             for combo_indices in itertools.combinations(indices_list, k):
                 # 获取组合中的图片
                 combo_images = [
-                    processor.resize_image(self.images[idx]["image"], tile_size, tile_size)
+                    processor.resize_image(selected_images[idx]["image"], tile_size, tile_size)
                     for idx in combo_indices
                 ]
                 
-                # 生成组合名称（使用用户定义的名字）
+                # 生成组合名称
                 combo_name = "".join(image_names[idx] for idx in combo_indices)
                 
                 # 根据排布方式生成
@@ -340,6 +527,32 @@ class GenerateFrame(ttk.Frame):
                 completed += 1
                 self.progress_var.set(completed / total_tasks * 100)
                 self.update_idletasks()
+        
+        # 3. 如果勾选了"全体都有"，生成所有选中素材的组合
+        if self.all_together_var.get():
+            all_images = [
+                processor.resize_image(img_data["image"], tile_size, tile_size)
+                for img_data in selected_images
+            ]
+            
+            combo_name = "".join(image_names)
+            
+            if layout == "horizontal":
+                result = layout_engine.horizontal_layout(all_images)
+                suffix = "_h"
+            elif layout == "vertical":
+                result = layout_engine.vertical_layout(all_images)
+                suffix = "_v"
+            else:  # circular
+                result = layout_engine.circular_layout(all_images)
+                suffix = "_c"
+            
+            output_path = os.path.join(output_dir, f"{combo_name}{suffix}.png")
+            result.save(output_path, "PNG")
+            
+            completed += 1
+            self.progress_var.set(completed / total_tasks * 100)
+            self.update_idletasks()
     
     def _count_combinations(self, n: int, k: int) -> int:
         """计算组合数 C(n,k)"""

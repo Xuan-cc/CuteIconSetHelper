@@ -129,10 +129,15 @@ class LayoutEngine:
         # 创建画布
         canvas = self.processor.create_transparent_canvas(output_size, output_size)
         
+        # 计算起始角度，使得正n边形有水平底边
+        # 对于正n边形，要让底边水平，起始角度应该是 90 - 180/n 度
+        # 这样第0个和第n-1个素材形成水平底边
+        start_angle = 90 - (180 / n)
+        
         # 排列图片
         for i, img in enumerate(images):
-            # 计算角度（从0度开始，顺时针）
-            angle = i * angle_step  # 0度使第一张在右侧（3点钟方向）
+            # 计算角度
+            angle = start_angle + i * angle_step
             
             # 计算位置
             rad = math.radians(angle)
