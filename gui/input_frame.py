@@ -136,17 +136,15 @@ class InputFrame(ttk.Frame):
         except ImportError:
             pass
         
-        # 备选：使用windnd
+        # 备选：使用windnd（修复线程安全问题）
         try:
             import windnd
             
-            # 使用包装函数捕获异常
+            # 使用after()将回调调度到主线程，避免Tkinter线程安全问题
             def safe_drop_callback(file_list):
-                try:
-                    self._on_files_dropped(file_list)
-                except Exception as e:
-                    print(f"拖拽处理错误: {e}")
-                    messagebox.showerror("错误", f"处理拖拽文件时出错:\n{str(e)}")
+                # 将文件列表保存到实例变量，然后通过after调度到主线程处理
+                self._pending_drop_files = file_list
+                self.after(1, self._process_pending_drops)
             
             windnd.hook_dropfiles(self.drop_frame, func=safe_drop_callback)
             
@@ -167,23 +165,25 @@ class InputFrame(ttk.Frame):
             )
     
     def _on_tkdnd_drop(self, event):
-        """处理tkinterdnd2拖拽"""
+        """处理tkinterdnd2拖拽 - 使用after()避免线程问题"""
         try:
             # 获取拖拽的文件路径
             data = event.data
             if not data:
                 return
             
-            # 解析文件路径（处理空格和特殊字符）
+            # 解析文件路径
             files = self._parse_drop_data(data)
             
+            # 使用after()调度到主线程处理
             for file_path in files:
                 if os.path.isfile(file_path):
-                    self._add_image(file_path)
+                    self.after(1, lambda path=file_path: self._add_image(path))
                     
         except Exception as e:
             print(f"处理拖拽失败: {e}")
-            messagebox.showerror("错误", f"处理拖拽文件时出错:\n{str(e)}")
+            # 使用after()显示错误，避免在回调中直接调用messagebox
+            self.after(1, lambda msg=str(e): messagebox.showerror("错误", f"处理拖拽文件时出错:\n{msg}"))
     
     def _parse_drop_data(self, data: str) -> tp.List[str]:
         """解析拖拽数据，提取文件路径"""
@@ -208,8 +208,14 @@ class InputFrame(ttk.Frame):
         
         return files
     
-    def _on_files_dropped(self, file_list):
-        """处理windnd拖拽的文件"""
+    def _process_pending_drops(self):
+        """处理windnd拖拽的文件（在主线程中执行）"""
+        if not hasattr(self, '_pending_drop_files') or not self._pending_drop_files:
+            return
+        
+        file_list = self._pending_drop_files
+        self._pending_drop_files = []  # 清空待处理列表
+        
         try:
             for file_path in file_list:
                 # 处理不同编码
