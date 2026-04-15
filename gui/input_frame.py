@@ -133,14 +133,14 @@ class InputFrame(ttk.Frame):
     def _setup_macos_drag_drop(self):
         """设置macOS拖拽支持"""
         self.drag_hint_label.configure(
-            text="macOS: 请使用"选择图片"按钮导入",
+            text="macOS: 请使用'选择图片'按钮导入",
             foreground="gray"
         )
     
     def _setup_linux_drag_drop(self):
         """设置Linux拖拽支持"""
         self.drag_hint_label.configure(
-            text="Linux: 请使用"选择图片"按钮导入",
+            text="Linux: 请使用'选择图片'按钮导入",
             foreground="gray"
         )
     
