@@ -3,7 +3,7 @@
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageDraw
 import typing as tp
 import math
 
@@ -41,7 +41,7 @@ class CropFrame(ttk.Frame):
         """创建界面组件"""
         # 标题
         title_frame = ttk.Frame(self)
-        title_frame.pack(fill=tk.X, pady=10)
+        title_frame.pack(fill=tk.X, pady=5)
         
         self.title_label = ttk.Label(
             title_frame,
@@ -55,51 +55,73 @@ class CropFrame(ttk.Frame):
             text="",
             font=("Microsoft YaHei", 10)
         )
-        self.progress_label.pack(pady=5)
+        self.progress_label.pack(pady=2)
         
-        # 主内容区
+        # 主内容区 - 使用水平分割
         content_frame = ttk.Frame(self)
-        content_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        content_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
-        # 图片显示画布
+        # 左侧：图片显示画布
+        left_frame = ttk.Frame(content_frame)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        
         self.canvas = tk.Canvas(
-            content_frame,
+            left_frame,
             bg="#2b2b2b",
             relief=tk.SUNKEN,
-            borderwidth=2
+            borderwidth=2,
+            height=400
         )
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
         
-        # 控制面板
-        control_frame = ttk.Frame(content_frame, width=200)
-        control_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
-        control_frame.pack_propagate(False)
+        # 右侧：控制面板 - 使用固定宽度并允许滚动
+        right_container = ttk.Frame(content_frame, width=220)
+        right_container.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
+        right_container.pack_propagate(False)
+        
+        # 创建Canvas和Scrollbar实现滚动
+        right_canvas = tk.Canvas(right_container, width=200)
+        scrollbar = ttk.Scrollbar(right_container, orient="vertical", command=right_canvas.yview)
+        control_frame = ttk.Frame(right_canvas)
+        
+        control_frame.bind(
+            "<Configure>",
+            lambda e: right_canvas.configure(scrollregion=right_canvas.bbox("all"))
+        )
+        
+        right_canvas.create_window((0, 0), window=control_frame, anchor="nw", width=200)
+        right_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        right_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         # 信息面板
         info_frame = ttk.LabelFrame(control_frame, text="图片信息")
-        info_frame.pack(fill=tk.X, pady=10, padx=5)
+        info_frame.pack(fill=tk.X, pady=5, padx=5)
         
         self.info_size = ttk.Label(info_frame, text="尺寸: -")
-        self.info_size.pack(anchor=tk.W, padx=5, pady=2)
+        self.info_size.pack(anchor=tk.W, padx=5, pady=1)
         
         self.info_ratio = ttk.Label(info_frame, text="比例: -")
-        self.info_ratio.pack(anchor=tk.W, padx=5, pady=2)
+        self.info_ratio.pack(anchor=tk.W, padx=5, pady=1)
         
         # 裁剪控制
         crop_control = ttk.LabelFrame(control_frame, text="裁剪控制")
-        crop_control.pack(fill=tk.X, pady=10, padx=5)
+        crop_control.pack(fill=tk.X, pady=5, padx=5)
         
         ttk.Label(
             crop_control,
-            text="拖动裁剪框可移动位置\n在框外拖动可重新绘制",
+            text="拖动裁剪框可移动\n框外拖动可重绘",
             wraplength=180,
-            justify=tk.CENTER
-        ).pack(pady=5)
+            justify=tk.CENTER,
+            font=("Microsoft YaHei", 9)
+        ).pack(pady=2)
         
-        # 裁剪形状选择
+        # 裁剪形状选择 - 添加trace监听变化
         self.crop_shape_var = tk.StringVar(value="square")
+        self.crop_shape_var.trace_add('write', self._on_shape_changed)
         shape_frame = ttk.Frame(crop_control)
-        shape_frame.pack(fill=tk.X, padx=5, pady=5)
+        shape_frame.pack(fill=tk.X, padx=5, pady=3)
         ttk.Label(shape_frame, text="裁剪形状:").pack(side=tk.LEFT)
         ttk.Radiobutton(shape_frame, text="方形", variable=self.crop_shape_var, 
                        value="square").pack(side=tk.LEFT, padx=2)
@@ -110,59 +132,58 @@ class CropFrame(ttk.Frame):
             crop_control,
             text="重置裁剪框",
             command=self._reset_crop
-        ).pack(fill=tk.X, padx=5, pady=5)
+        ).pack(fill=tk.X, padx=5, pady=2)
         
         ttk.Button(
             crop_control,
             text="自动居中裁剪",
             command=self._auto_crop
-        ).pack(fill=tk.X, padx=5, pady=5)
+        ).pack(fill=tk.X, padx=5, pady=2)
         
         # 实时预览窗口
         preview_frame = ttk.LabelFrame(control_frame, text="裁剪预览")
-        preview_frame.pack(fill=tk.X, pady=10, padx=5)
+        preview_frame.pack(fill=tk.X, pady=5, padx=5)
         
         self.preview_canvas = tk.Canvas(preview_frame, width=150, height=150, bg="#2b2b2b")
-        self.preview_canvas.pack(pady=5)
-        
-        ttk.Button(
-            preview_frame,
-            text="刷新预览",
-            command=self._update_preview
-        ).pack(fill=tk.X, padx=5, pady=2)
+        self.preview_canvas.pack(pady=3)
         
         # 操作按钮
         btn_frame = ttk.Frame(control_frame)
-        btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
+        btn_frame.pack(fill=tk.X, pady=5, padx=5)
         
         ttk.Button(
             btn_frame,
             text="跳过此图",
             command=self._skip_current
-        ).pack(fill=tk.X, padx=5, pady=2)
+        ).pack(fill=tk.X, pady=2)
         
         ttk.Button(
             btn_frame,
             text="应用裁剪",
             command=self._apply_crop
-        ).pack(fill=tk.X, padx=5, pady=2)
+        ).pack(fill=tk.X, pady=2)
         
         ttk.Button(
             btn_frame,
             text="应用并再裁一张",
             command=self._apply_and_crop_another
-        ).pack(fill=tk.X, padx=5, pady=2)
+        ).pack(fill=tk.X, pady=2)
         
         ttk.Button(
             btn_frame,
             text="下一步",
             command=self._finish
-        ).pack(fill=tk.X, padx=5, pady=5)
+        ).pack(fill=tk.X, pady=2)
         
         # 绑定鼠标事件
         self.canvas.bind("<Button-1>", self._on_mouse_down)
         self.canvas.bind("<B1-Motion>", self._on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
+    
+    def _on_shape_changed(self, *args):
+        """裁剪形状改变时自动刷新"""
+        self._draw_crop_rect()
+        self._update_preview()
     
     def set_images(self, images: tp.List[tp.Dict]):
         """设置要处理的图片"""
@@ -278,6 +299,9 @@ class CropFrame(ttk.Frame):
         
         # 创建裁剪框
         self._draw_crop_rect()
+        
+        # 自动刷新预览
+        self._update_preview()
     
     def _draw_crop_rect(self):
         """绘制裁剪框"""
@@ -323,22 +347,20 @@ class CropFrame(ttk.Frame):
             # 裁剪图片
             cropped = self.original_image.crop((x1, y1, x2, y2))
             
-            # 如果是圆形裁剪，处理成圆形（方形外透明）
+            # 如果是圆形裁剪，应用圆形遮罩
             if self.crop_shape_var.get() == "circle":
                 cropped = self._apply_circle_mask(cropped)
             
             # 缩放到预览尺寸
             preview_size = 150
-            cropped.thumbnail((preview_size, preview_size), Image.Resampling.LANCZOS)
+            cropped_preview = cropped.resize((preview_size, preview_size), Image.Resampling.LANCZOS)
             
             # 转换为PhotoImage
-            self.preview_image = ImageTk.PhotoImage(cropped)
+            self.preview_image = ImageTk.PhotoImage(cropped_preview)
             
             # 清空预览画布并显示
             self.preview_canvas.delete("all")
-            x = (preview_size - cropped.width) // 2
-            y = (preview_size - cropped.height) // 2
-            self.preview_canvas.create_image(x, y, anchor=tk.NW, image=self.preview_image)
+            self.preview_canvas.create_image(0, 0, anchor=tk.NW, image=self.preview_image)
             
         except Exception as e:
             print(f"预览更新失败: {e}")
@@ -352,20 +374,18 @@ class CropFrame(ttk.Frame):
         width, height = img.size
         size = min(width, height)
         
+        # 创建透明背景
+        result = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        
         # 创建圆形遮罩
         mask = Image.new('L', (width, height), 0)
-        mask_draw = Image.new('RGBA', (width, height), (0, 0, 0, 0))
-        
-        # 在遮罩上绘制白色圆形
-        import ImageDraw
         draw = ImageDraw.Draw(mask)
-        # 在中心绘制圆形
+        # 在中心绘制白色圆形
         left = (width - size) // 2
         top = (height - size) // 2
         draw.ellipse([left, top, left + size, top + size], fill=255)
         
         # 应用遮罩
-        result = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         result.paste(img, (0, 0), mask)
         
         return result
@@ -479,9 +499,11 @@ class CropFrame(ttk.Frame):
             self.crop_y1 = self.crop_y2 - crop_height
     
     def _on_mouse_up(self, event):
-        """鼠标释放"""
+        """鼠标释放 - 自动刷新预览"""
         self.is_dragging = False
         self.drag_mode = None
+        # 自动刷新预览
+        self._update_preview()
     
     def _reset_crop(self):
         """重置裁剪框"""
