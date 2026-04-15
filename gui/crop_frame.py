@@ -169,11 +169,8 @@ class CropFrame(ttk.Frame):
             text=f"处理第 {self.current_index + 1} / {len(self.images)} 张图片"
         )
         
-        # 在画布上显示图片
+        # 在画布上显示图片（包括初始化裁剪框）
         self._display_image()
-        
-        # 初始化裁剪框（居中，取较小的边）
-        self._init_crop_rect()
     
     def _display_image(self):
         """在画布上显示图片"""
@@ -221,6 +218,9 @@ class CropFrame(ttk.Frame):
         self.img_offset_y = y
         self.img_display_width = new_width
         self.img_display_height = new_height
+        
+        # 图片显示完成后，初始化裁剪框
+        self._init_crop_rect()
     
     def _init_crop_rect(self):
         """初始化裁剪框"""
