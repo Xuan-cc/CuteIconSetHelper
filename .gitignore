@@ -27,6 +27,7 @@ MANIFEST
 *.manifest
 *.spec
 !main.spec  # 保留打包配置文件
+!CuteIconSetHelper.spec  # 保留打包配置文件
 
 # Installer logs
 pip-log.txt
