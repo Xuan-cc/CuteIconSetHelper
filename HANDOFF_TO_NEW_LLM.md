@@ -136,6 +136,49 @@ python main.py
 
 ---
 
+## 本次会话任务总结 (2026-04-15)
+
+### 修复 Bug
+1. **裁剪预览透明残留** (`crop_frame.py`)
+   - 问题：预览刷新时未清空画布，透明图片会残留上一次预览
+   - 修复：在 `delete("all")` 后填充背景色矩形
+
+2. **生成界面选中状态提示不更新** (`generate_frame.py`)
+   - 问题：点击取消选中后，卡片下方的"✓ 已选中"提示不会变为"× 未选中"
+   - 修复：添加 `select_indicators` 列表存储指示器引用，在 `_update_card_styles` 中同步更新
+
+3. **生成界面 UI 显示不全** (`generate_frame.py`)
+   - 问题：默认 1000x800 窗口下"生成输出"按钮被遮挡
+   - 修复：
+     - 预览区域高度从自适应改为固定 240px
+     - 卡片尺寸从 180x220 缩小为 140x180
+     - 缩略图从 100x100 缩小为 80x80
+
+### 功能优化
+4. **卡片布局一行5个** (`generate_frame.py`)
+   - 将 `cards_per_row` 从 4 改为 5
+
+5. **文件名使用 "x" 连接** (`generate_frame.py`)
+   - 组合文件名格式：`小明x小红.png`、`小明x小红x小蓝.png`
+   - 修改 `_do_generate` 中的 `combo_name` 生成逻辑
+
+### 文档与发布
+6. **重写 README.md**
+   - 添加完整的功能特性说明
+   - 更新使用说明和输出示例
+   - 添加技术栈和更新日志
+
+7. **创建 .gitignore**
+   - Python 项目标准忽略规则
+   - PyInstaller 输出目录
+   - IDE 和系统文件
+
+8. **PyInstaller 打包**
+   - 安装 PyInstaller
+   - 打包为单文件可执行文件：`dist/CuteIconSetHelper.exe` (约 19.7 MB)
+
+---
+
 ## 联系
 - 项目地址：https://github.com/Xuan-cc/CuteIconSetHelper
 - 用户：Xuan-cc
