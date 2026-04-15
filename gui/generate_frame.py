@@ -163,6 +163,19 @@ class GenerateFrame(ttk.Frame):
         self.cards_frame.bind("<Configure>", self._on_cards_frame_configure)
         self.cards_canvas.bind("<Configure>", self._on_canvas_configure)
 
+        # 进度条
+        self.progress_var = tk.DoubleVar(value=0)
+        self.progress_bar = ttk.Progressbar(
+            self,
+            variable=self.progress_var,
+            maximum=100
+        )
+        self.progress_bar.pack(fill=tk.X, padx=20, pady=5)
+
+        # 状态标签
+        self.status_label = ttk.Label(self, text="准备就绪")
+        self.status_label.pack(pady=2)
+
         # 按钮区域
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill=tk.X, pady=10, padx=20)
