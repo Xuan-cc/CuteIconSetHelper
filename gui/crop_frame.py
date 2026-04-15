@@ -94,7 +94,17 @@ class CropFrame(ttk.Frame):
             text="拖动裁剪框可移动位置\n在框外拖动可重新绘制",
             wraplength=180,
             justify=tk.CENTER
-        ).pack(pady=10)
+        ).pack(pady=5)
+        
+        # 裁剪形状选择
+        self.crop_shape_var = tk.StringVar(value="square")
+        shape_frame = ttk.Frame(crop_control)
+        shape_frame.pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(shape_frame, text="裁剪形状:").pack(side=tk.LEFT)
+        ttk.Radiobutton(shape_frame, text="方形", variable=self.crop_shape_var, 
+                       value="square").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(shape_frame, text="圆形", variable=self.crop_shape_var, 
+                       value="circle").pack(side=tk.LEFT, padx=2)
         
         ttk.Button(
             crop_control,
@@ -107,6 +117,19 @@ class CropFrame(ttk.Frame):
             text="自动居中裁剪",
             command=self._auto_crop
         ).pack(fill=tk.X, padx=5, pady=5)
+        
+        # 实时预览窗口
+        preview_frame = ttk.LabelFrame(control_frame, text="裁剪预览")
+        preview_frame.pack(fill=tk.X, pady=10, padx=5)
+        
+        self.preview_canvas = tk.Canvas(preview_frame, width=150, height=150, bg="#2b2b2b")
+        self.preview_canvas.pack(pady=5)
+        
+        ttk.Button(
+            preview_frame,
+            text="刷新预览",
+            command=self._update_preview
+        ).pack(fill=tk.X, padx=5, pady=2)
         
         # 操作按钮
         btn_frame = ttk.Frame(control_frame)
@@ -122,6 +145,12 @@ class CropFrame(ttk.Frame):
             btn_frame,
             text="应用裁剪",
             command=self._apply_crop
+        ).pack(fill=tk.X, padx=5, pady=2)
+        
+        ttk.Button(
+            btn_frame,
+            text="应用并再裁一张",
+            command=self._apply_and_crop_another
         ).pack(fill=tk.X, padx=5, pady=2)
         
         ttk.Button(
@@ -255,13 +284,91 @@ class CropFrame(ttk.Frame):
         if self.crop_rect:
             self.canvas.delete(self.crop_rect)
         
-        self.crop_rect = self.canvas.create_rectangle(
-            self.crop_x1, self.crop_y1,
-            self.crop_x2, self.crop_y2,
-            outline="red",
-            width=2,
-            dash=(5, 5)
-        )
+        # 根据裁剪形状绘制
+        if self.crop_shape_var.get() == "circle":
+            # 绘制圆形裁剪框
+            self.crop_rect = self.canvas.create_oval(
+                self.crop_x1, self.crop_y1,
+                self.crop_x2, self.crop_y2,
+                outline="red",
+                width=2,
+                dash=(5, 5)
+            )
+        else:
+            # 绘制方形裁剪框
+            self.crop_rect = self.canvas.create_rectangle(
+                self.crop_x1, self.crop_y1,
+                self.crop_x2, self.crop_y2,
+                outline="red",
+                width=2,
+                dash=(5, 5)
+            )
+    
+    def _update_preview(self):
+        """更新裁剪预览"""
+        if not self.original_image or not self.crop_rect:
+            return
+        
+        try:
+            # 计算裁剪区域（转换到原始图片坐标）
+            x1 = int((min(self.crop_x1, self.crop_x2) - self.img_offset_x) / self.display_scale)
+            y1 = int((min(self.crop_y1, self.crop_y2) - self.img_offset_y) / self.display_scale)
+            x2 = int((max(self.crop_x1, self.crop_x2) - self.img_offset_x) / self.display_scale)
+            y2 = int((max(self.crop_y1, self.crop_y2) - self.img_offset_y) / self.display_scale)
+            
+            # 确保正方形
+            size = min(x2 - x1, y2 - y1)
+            x2, y2 = x1 + size, y1 + size
+            
+            # 裁剪图片
+            cropped = self.original_image.crop((x1, y1, x2, y2))
+            
+            # 如果是圆形裁剪，处理成圆形（方形外透明）
+            if self.crop_shape_var.get() == "circle":
+                cropped = self._apply_circle_mask(cropped)
+            
+            # 缩放到预览尺寸
+            preview_size = 150
+            cropped.thumbnail((preview_size, preview_size), Image.Resampling.LANCZOS)
+            
+            # 转换为PhotoImage
+            self.preview_image = ImageTk.PhotoImage(cropped)
+            
+            # 清空预览画布并显示
+            self.preview_canvas.delete("all")
+            x = (preview_size - cropped.width) // 2
+            y = (preview_size - cropped.height) // 2
+            self.preview_canvas.create_image(x, y, anchor=tk.NW, image=self.preview_image)
+            
+        except Exception as e:
+            print(f"预览更新失败: {e}")
+    
+    def _apply_circle_mask(self, img: Image.Image) -> Image.Image:
+        """应用圆形遮罩（方形外透明）"""
+        # 转换为RGBA模式
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+        
+        width, height = img.size
+        size = min(width, height)
+        
+        # 创建圆形遮罩
+        mask = Image.new('L', (width, height), 0)
+        mask_draw = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        
+        # 在遮罩上绘制白色圆形
+        import ImageDraw
+        draw = ImageDraw.Draw(mask)
+        # 在中心绘制圆形
+        left = (width - size) // 2
+        top = (height - size) // 2
+        draw.ellipse([left, top, left + size, top + size], fill=255)
+        
+        # 应用遮罩
+        result = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        result.paste(img, (0, 0), mask)
+        
+        return result
     
     def _is_point_in_crop_rect(self, x, y):
         """检查点是否在裁剪框内"""
@@ -419,6 +526,10 @@ class CropFrame(ttk.Frame):
         # 裁剪图片
         cropped = self.original_image.crop((x1, y1, x2, y2))
         
+        # 如果是圆形裁剪，应用圆形遮罩
+        if self.crop_shape_var.get() == "circle":
+            cropped = self._apply_circle_mask(cropped)
+        
         # 更新图片数据
         img_data = self.images[self.current_index].copy()
         img_data["image"] = cropped
@@ -434,6 +545,53 @@ class CropFrame(ttk.Frame):
         
         self.current_index += 1
         self._find_next_non_square()
+        self._load_current_image()
+    
+    def _apply_and_crop_another(self):
+        """应用本次裁剪并再裁一张（从同一张原图再裁剪一个区域）"""
+        if not self.crop_rect:
+            return
+        
+        # 计算裁剪区域（转换到原始图片坐标）
+        x1 = (min(self.crop_x1, self.crop_x2) - self.img_offset_x) / self.display_scale
+        y1 = (min(self.crop_y1, self.crop_y2) - self.img_offset_y) / self.display_scale
+        x2 = (max(self.crop_x1, self.crop_x2) - self.img_offset_x) / self.display_scale
+        y2 = (max(self.crop_y1, self.crop_y2) - self.img_offset_y) / self.display_scale
+        
+        # 转换为整数坐标
+        x1, y1 = int(x1), int(y1)
+        x2, y2 = int(x2), int(y2)
+        
+        # 确保正方形
+        size = min(x2 - x1, y2 - y1)
+        x2, y2 = x1 + size, y1 + size
+        
+        # 裁剪图片
+        cropped = self.original_image.crop((x1, y1, x2, y2))
+        
+        # 如果是圆形裁剪，应用圆形遮罩
+        if self.crop_shape_var.get() == "circle":
+            cropped = self._apply_circle_mask(cropped)
+        
+        # 创建新的图片数据（基于当前原图）
+        img_data = self.images[self.current_index].copy()
+        img_data["image"] = cropped
+        img_data["width"] = size
+        img_data["height"] = size
+        img_data["is_square"] = True
+        img_data["cropped"] = True
+        
+        # 添加到裁剪列表
+        if self.current_index >= len(self.cropped_images):
+            self.cropped_images.append(img_data)
+        else:
+            self.cropped_images[self.current_index] = img_data
+        
+        # 在当前位置插入一个新的待处理项（使用同一张原图）
+        new_img_data = self.images[self.current_index].copy()
+        self.images.insert(self.current_index + 1, new_img_data)
+        
+        self.current_index += 1
         self._load_current_image()
     
     def _finish(self):
